@@ -27,6 +27,7 @@ KC.MS = {'МС-1': {B: 90, kg: 1.94, asym: false}, 'МС-2': {B: 100, kg: 1.98, 
          'МС-5': {B: 90, kg: 1.56, asym: true}, 'МС-6': {B: 100, kg: 1.60, asym: true}, 'МС-7': {B: 110, kg: 1.63, asym: true}, 'МС-8': {B: 120, kg: 1.67, asym: true}};
 KC.OTM_S = 5.338;          // асфальтовая отмостка на 1 люк, м² (спецификация «Авто Колодцев»)
 KC.SHELF_I = 0.02;         // уклон полок к лотку
+KC.hex = n => '#' + n.toString(16).padStart(6, '0');
 KC.TAPE_TEXT = 'ГИДРОИЗОЛЯЦИОННАЯ ЛЕНТА';   // надпись на ленте в 3D
 KC.PLACE = {'Г': 'газон', 'Т': 'тротуар', 'Д': 'проезжая часть', 'Н': 'незастроенная территория'};
 
@@ -405,7 +406,7 @@ KC.unpack = async function (s) {
 
 /* ---------------- 3D-сцена (three.js) ---------------- */
 KC.COL = {ring: 0xc9c5bb, ring2: 0xbfbbb0, plate: 0xaaa69c, gorl: 0xd5cfc2, ko: 0xe0dacc, lot: 0xbdb8ad, chan: 0x7f95a4, pipe: 0xd0712f, pipeIn: 0x9c4f1d,
-  iron: 0x34383d, lid: 0x4e555c, step: 0xd9a21b, wall: 0x8d77bd, steel: 0x4a5560, ms: 0x2f6f9f, hi: 0xf2a516, coat: 0x1c1e20, tape: 0x262a30, cap: 0xe9e4d8,
+  iron: 0x34383d, lid: 0x4e555c, step: 0xd9a21b, wall: 0x8d77bd, steel: 0x4a5560, ms: 0x2f6f9f, hi: 0xf2a516, coat: 0x6f747a, tape: 0x16181b, cap: 0xe9e4d8,
   grass: 0x76a650, soil: 0x9a7b5a, lean: 0xb0aca2, mortar: 0xc9c1b0, clay: 0x8f6a4a, comp: 0xa48a6c, asph: 0x3f4348, gravel: 0x9d978c, tile: 0xb8b1a5, sand: 0xd9c9a3, edge: 0x4a4a4a};
 KC.buildScene = function (M, THREE) {
   const C = KC.COL, scene = new THREE.Scene(), meshes = [], mats = new Map();
@@ -570,7 +571,7 @@ KC.buildScene = function (M, THREE) {
   const tapeMat = (h, r) => {
     if (typeof document === 'undefined') return null;
     const rows = Math.max(1, Math.round(h / .3)), c = document.createElement('canvas'); c.width = 2048; c.height = Math.max(48, Math.round(2048 / (2 * Math.PI * r) * h));
-    const g = c.getContext('2d'); g.fillStyle = '#262a30'; g.fillRect(0, 0, c.width, c.height);
+    const g = c.getContext('2d'); g.fillStyle = KC.TAPE_BG || '#16181b'; g.fillRect(0, 0, c.width, c.height);
     g.fillStyle = '#5d6772'; g.fillRect(0, 0, c.width, 5); g.fillRect(0, c.height - 5, c.width, 5);
     const txt = KC.TAPE_TEXT || 'ЛЕНТА', circ = 2 * Math.PI * r, n = Math.max(2, Math.round(circ / (txt.length > 8 ? 2.4 : 1.6))), segW = c.width / n;
     const arc = Math.min(txt.length > 8 ? 1.2 : .55, r * 1.4), pxm = c.width / circ;   // длина надписи по дуге, м; пикселей на метр
