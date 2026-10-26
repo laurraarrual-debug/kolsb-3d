@@ -97,7 +97,7 @@ function buildSeams(M) {
   if (!M.seis) return;
   const S2 = KC.SEAM / 2, k = M.k;
   const ringMark = M.D >= 2 ? 'МС-4' : M.D >= 1.5 ? 'МС-3' : 'МС-2', ppMark = M.D >= 2 ? 'МС-8' : M.D >= 1.5 ? 'МС-7' : 'МС-6';
-  const around = (n, off) => Array.from({length: n}, (_, j) => M.go + off + j * 2 * Math.PI / n);
+  const around = (n, off) => { const r = []; for (let j = 0; r.length < n; j++) { r.push(M.go + off + j * 2 * Math.PI / n); if (r.length < n) r.push(M.go - off - j * 2 * Math.PI / n); } return r; };
   M.rings.forEach((r, i) => {
     if (i < M.rings.length - 1) M.seams.push({kind: 'ring', z: r.z1 + S2, mark: ringMark, n: k, cx: 0, cy: 0, rin: M.Rin, rout: M.Rout, angs: around(k, Math.PI / k), asym: false, below: r, above: M.rings[i + 1]});
   });
@@ -106,8 +106,10 @@ function buildSeams(M) {
   const g0 = M.gorl[0] || M.koE;
   if (g0) M.seams.push({kind: 'ppg', z: M.V + M.hpp + S2, mark: 'МС-5', n: 4, cx: M.gx, cy: M.gy, rin: .35, rout: .42, angs: around(4, Math.PI / 4), asym: true, longOut: false, below: M.ppE, above: g0});
   let j = 0;
-  M.gorl.forEach(g => { M.seams.push({kind: 'gorl', z: g.z1 + S2, mark: 'МС-1', n: 4, cx: M.gx, cy: M.gy, rin: .35, rout: .42, angs: around(4, Math.PI / 4 + (j++ % 2) * Math.PI / 8), asym: false, below: g}); });
-  if (M.koE) for (let i = 0; i < M.koE.q; i++) M.seams.push({kind: 'gorl', z: M.koE.z0 + i * .08 + .07 + S2, mark: 'МС-1', n: 4, cx: M.gx, cy: M.gy, rin: .29, rout: .42, angs: around(4, Math.PI / 4 + (j++ % 2) * Math.PI / 8), asym: false, below: M.koE});
+  // горловина: швы чередуются, чтобы полки МС на соседних КО6 (шаг 80 мм) не упирались друг в друга; положения симметричны оси выпуска
+  const gA = [1, -1, 3, -3].map(q => M.go + q * Math.PI / 4), gB = [1.5, -1.5, 3.5, -3.5].map(q => M.go + q * Math.PI / 4);
+  M.gorl.forEach(g => { const odd = j++ % 2; M.seams.push({kind: 'gorl', alt: odd, z: g.z1 + S2, mark: 'МС-1', n: 4, cx: M.gx, cy: M.gy, rin: .35, rout: .42, angs: odd ? gB : gA, asym: false, below: g}); });
+  if (M.koE) for (let i = 0; i < M.koE.q; i++) { const odd = j++ % 2; M.seams.push({kind: 'gorl', alt: odd, z: M.koE.z0 + i * .08 + .07 + S2, mark: 'МС-1', n: 4, cx: M.gx, cy: M.gy, rin: .29, rout: .42, angs: odd ? gB : gA, asym: false, below: M.koE}); }
   M.seams.forEach((s, i) => { s.key = 'ms' + i; });
 }
 
@@ -286,7 +288,7 @@ KC.stepsOf = function (M) {
       const els2 = sm ? [e.key, sm.key] : [e.key];
       let todo;
       if (e.first) todo = ['На раствор М100, шов 10 мм.', hasIn ? `Проёмы у дна — ${nLow} шт.; перепадный вход — лоток ${H(M.zin)} м.` : `Проёмы под трубы — ${nLow} шт., по направлениям с плана.`, 'В этом кольце бетонируется лоток.'];
-      else if (sm) todo = [`На верх нижнего кольца надеть ${msTxt(sm)}: полки охватывают стенку, стенка МС — в шве.`, 'Раствор М100, шов 10 мм; затем кольцо.', hasIn ? `Проём под перепадный вход: лоток ${H(M.zin)} м.` : `Верх кольца — ${H(e.z1)} м.`];
+      else if (sm) todo = [`На верх нижнего кольца — ${sm.mark} ×${sm.n} по разметке (±${Math.round(180 / sm.n * 10) / 10}° от оси выпуска).`, 'Раствор М100, шов 10 мм; затем кольцо.', hasIn ? `Проём под перепадный вход: лоток ${H(M.zin)} м.` : `Верх кольца — ${H(e.z1)} м.`];
       else todo = ['На раствор М100, шов 10 мм.', 'Кольцо — соосно нижнему, швы заполнить.', hasIn ? `Проём под перепадный вход: лоток ${H(M.zin)} м.` : `Верх кольца — ${H(e.z1)} м.`];
       out.push({...base, els: els2, t: `Кольцо ${e.mark}${e.first ? ' — нижнее' : ''}`, todo,
         chk: e.first && seis ? 'Шов с плитой — без МС: обойму даёт бетон лотка.' : 'Вертикальность, совпадение швов.'});
