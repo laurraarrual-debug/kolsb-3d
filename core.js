@@ -27,6 +27,7 @@ KC.MS = {'МС-1': {B: 90, kg: 1.94, asym: false}, 'МС-2': {B: 100, kg: 1.98, 
          'МС-5': {B: 90, kg: 1.56, asym: true}, 'МС-6': {B: 100, kg: 1.60, asym: true}, 'МС-7': {B: 110, kg: 1.63, asym: true}, 'МС-8': {B: 120, kg: 1.67, asym: true}};
 KC.OTM_S = 5.338;          // асфальтовая отмостка на 1 люк, м² (спецификация «Авто Колодцев»)
 KC.SHELF_I = 0.02;         // уклон полок к лотку
+KC.TAPE_TEXT = 'ЛЕНТА';   // надпись на ленте в 3D
 KC.PLACE = {'Г': 'газон', 'Т': 'тротуар', 'Д': 'проезжая часть', 'Н': 'незастроенная территория'};
 
 /* ---------------- модель ---------------- */
@@ -563,8 +564,10 @@ KC.buildScene = function (M, THREE) {
     const rows = Math.max(1, Math.round(h / .3)), c = document.createElement('canvas'); c.width = 1024; c.height = Math.max(48, Math.round(160 * h / .3));
     const g = c.getContext('2d'); g.fillStyle = '#262a30'; g.fillRect(0, 0, c.width, c.height);
     g.fillStyle = '#5d6772'; g.fillRect(0, 0, c.width, 5); g.fillRect(0, c.height - 5, c.width, 5);
-    g.font = `bold ${Math.round(c.height / rows * .42)}px Arial, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#2f86e0';
-    for (let i = 0; i < rows; i++) { const y = c.height * (i + .5) / rows + 2; g.fillText('ЛЕНТА', c.width * .25, y); g.fillText('ЛЕНТА', c.width * .75, y); }
+    const txt = KC.TAPE_TEXT || 'ЛЕНТА', n = txt.length > 8 ? 1 : 2, segW = c.width / n;
+    g.font = 'bold 100px Arial, sans-serif'; const fit = segW * .84 / g.measureText(txt).width * 100;
+    g.font = `bold ${Math.round(Math.min(c.height / rows * .42, fit))}px Arial, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#2f86e0';
+    for (let i = 0; i < rows; i++) { const y = c.height * (i + .5) / rows + 2; for (let j = 0; j < n; j++) g.fillText(txt, segW * (j + .5), y); }
     const t = new THREE.CanvasTexture(c); t.wrapS = THREE.RepeatWrapping; t.anisotropy = 8; t.repeat.x = Math.max(1, Math.round(2 * Math.PI * r / 1.6));
     return new THREE.MeshStandardMaterial({map: t, roughness: .32, metalness: .05, side: THREE.DoubleSide});
   };
