@@ -93,6 +93,7 @@ tr.sum td{font-weight:700;background:var(--surface-2)} tr.sum td.ok{color:var(--
       <button class="btn main" id="bSteps" aria-pressed="false">Как собрать</button>
       <button class="btn" id="bCut" aria-pressed="false">Разрез</button>
       <button class="btn" id="bExp" aria-pressed="false">Разобрать</button>
+      <button class="btn" id="bCoat" aria-pressed="false">Гидроизоляция</button>
       <button class="btn" id="bLbl" aria-pressed="true">Подписи</button>
       <button class="btn" id="bReset">Вид</button>
       <button class="btn sheetbtn" id="bInfo">Данные</button>
@@ -106,10 +107,10 @@ tr.sum td{font-weight:700;background:var(--surface-2)} tr.sum td.ok{color:var(--
 <script src="core.js"></script>
 <script>
 "use strict";
-const DEMO = 'k1TY4xTgMxEEWvEk39Y83Ya6-9OUqUAomejoZBiigpaOiCyIpwgVBEoAhyhtkbISfaJI3led-e9x_onjoB3VA3Z0jmBeiOOrJ-WNqP_dpuWE7sYF_Ds-1sPzzZlkC31M1JCAyylX3Y51QIjeMAcRGB-Zi8Esg29Xi1rX3bwf4I7MSDHUcw2DXg-i8juAB2OSBWnNr6LoKst3eJdNJIdOVyTYQAAYn11kuc-lpHKqv7vYBdm9AklyEuZfhRnQvYxYJjSRodKloiz0aPBhXm85xUNCWenWV1zqe4dUFFJRynddKgdc_b8GL7iW1qJOmiUc_MKv5KJbGSlFlzuTaecSzX5nbEEi8FKswNqy9jjZhPpGVCQQbZ2la0ePwH';
+const DEMO = 'k1TY4xbgIxEEWvgqb-WDPrHa-9nIAzIIpI6dOliSOhlCnS0IHCKuQCpECJUMIZZm8UGbRAY3net-f9J3qkVkB31M4YEnkOeqCWrOsX9mO_tu8XIzvaV_9qezv0L7Yj0D21MxICg2xlH_Y5FkLt2EOcwjOfkiWBbFuOpe3s2472R2AnFdixgsGuBpd_Ed55sIseWnBoyjsFWWfvonTWiLp0vQaCh4DEOutEx1WpI4WV_ZWAXRNQBxchLkRUgzomsNOEU0kaHFlyUp4MnuyzMF_mkCWHwJOLrMzxHDfOZ8niT9MmZJ_LnnX_ZoeRbUsk4arJFTNnqW5UooWEyDmmW-MFa7o1NwMWvRYoMNacqzTU0HgmDRMSIsg2tiLQdEoQcV7nz_8';
 const $ = s => document.querySelector(s);
 const {fmt, sgn, esc, N, S} = KC;
-let M, SC, renderer, camera, controls, steps, stepIdx = -1, cut = false, expT = 0, expTarget = 0, showLbl = true, lblEls = [], needs = true;
+let showCoat = false, M, SC, renderer, camera, controls, steps, stepIdx = -1, cut = false, expT = 0, expTarget = 0, showLbl = true, lblEls = [], needs = true;
 
 function theme() { try { const t = localStorage.getItem('kolsb-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {} }
 theme();
@@ -144,13 +145,16 @@ function initGL() {
   addEventListener('resize', () => { needs = true; });
   requestAnimationFrame(loop);
 }
-function resetView() {
-  const box = new THREE.Box3(); for (const m of SC.meshes) if (!m.userData.cap) box.expandByObject(m);
+function resetView(visOnly) {
+  const box = new THREE.Box3(); for (const m of SC.meshes) if (!m.userData.cap && (!visOnly || m.visible) && m.userData.key !== 'surf') box.expandByObject(m);
+  if (box.isEmpty()) for (const m of SC.meshes) if (!m.userData.cap) box.expandByObject(m);
   const c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3()).length();
   const vw = $('#view'), aspect = (vw.clientWidth / vw.clientHeight) || 1; camera.aspect = aspect; camera.updateProjectionMatrix();
   const vf = camera.fov * Math.PI / 180, hf = 2 * Math.atan(Math.tan(vf / 2) * aspect), az = M.go - Math.PI / 2 - .4, el = .42, d = (size / 2) / Math.sin(Math.min(vf, hf) / 2) * .92;
   camera.position.set(c.x + d * Math.cos(el) * Math.cos(az), c.y + d * Math.cos(el) * Math.sin(az), c.z + d * Math.sin(el));
-  controls.target.copy(c); controls.update(); needs = true;
+  controls.target.copy(c);
+  if (visOnly && !$('#card').hidden) { const sh = ($('#card').offsetHeight + $('.tools').offsetHeight) / Math.max(1, vw.clientHeight); const vh = 2 * d * Math.tan(vf / 2); controls.target.z -= vh * sh * .5; camera.position.z -= vh * sh * .5; }
+  controls.update(); needs = true;
 }
 function applyState() {
   const st = stepIdx >= 0 ? steps[stepIdx] : null;
@@ -158,11 +162,12 @@ function applyState() {
   for (const m of SC.mats) m.clippingPlanes = cut ? [SC.plane] : [];
   for (const m of SC.meshes) {
     const k = m.userData.key;
-    let v = (m.userData.cap ? cut : true) && (!done || done.has(k) || (st && st.all));
+    let v = (m.userData.cap ? cut : true) && (!done || done.has(k));
+    if ((k === 'coat' || k === 'tape') && !done && !showCoat) v = false;
     m.visible = !!v;
-    if (m.isMesh && !m.userData.line) m.material = (st && (st.all ? (/^e\d/.test(k) && k !== M.hatchE.key) : cur.has(k))) ? (st.all ? SC.coatMat : SC.hiMat) : m.userData.base;
+    if (m.isMesh && !m.userData.line) m.material = (st && !st.nohi && cur.has(k)) ? SC.hiMat : m.userData.base;
   }
-  $('#bCut').setAttribute('aria-pressed', cut); $('#bExp').setAttribute('aria-pressed', expTarget > 0); $('#bLbl').setAttribute('aria-pressed', showLbl); $('#bSteps').setAttribute('aria-pressed', stepIdx >= 0);
+  $('#bCut').setAttribute('aria-pressed', cut); $('#bExp').setAttribute('aria-pressed', expTarget > 0); $('#bLbl').setAttribute('aria-pressed', showLbl); $('#bSteps').setAttribute('aria-pressed', stepIdx >= 0); $('#bCoat').setAttribute('aria-pressed', showCoat);
   const card = $('#card'); card.hidden = !st;
   if (st) { $('#cn').textContent = stepIdx + 1; $('#ct').textContent = st.t; $('#cf').textContent = `${st.fc ? st.fc + ' · ' : ''}шаг ${stepIdx + 1} из ${steps.length}`;
     $('#cu').innerHTML = st.todo.map(t => `<li>${esc(t)}</li>`).join(''); $('#cc').textContent = st.chk ? '✓ ' + st.chk : ''; }
@@ -197,10 +202,11 @@ function frame() {
   $('#bCut').onclick = () => { cut = !cut; applyState(); };
   $('#bExp').onclick = () => { expTarget = expTarget > 0 ? 0 : 1; applyState(); };
   $('#bLbl').onclick = () => { showLbl = !showLbl; applyState(); };
-  $('#bReset').onclick = () => resetView();
-  $('#bSteps').onclick = () => { if (stepIdx >= 0) { stepIdx = -1; } else { stepIdx = 0; cut = true; expTarget = 0; } applyState(); };
-  $('#next').onclick = () => { stepIdx = Math.min(steps.length - 1, stepIdx + 1); applyState(); };
-  $('#prev').onclick = () => { stepIdx = Math.max(0, stepIdx - 1); applyState(); };
+  $('#bCoat').onclick = () => { showCoat = !showCoat; applyState(); };
+  $('#bReset').onclick = () => resetView(stepIdx >= 0);
+  $('#bSteps').onclick = () => { if (stepIdx >= 0) { stepIdx = -1; applyState(); resetView(); } else { stepIdx = 0; cut = true; expTarget = 0; applyState(); resetView(true); } };
+  $('#next').onclick = () => { stepIdx = Math.min(steps.length - 1, stepIdx + 1); applyState(); resetView(true); };
+  $('#prev').onclick = () => { stepIdx = Math.max(0, stepIdx - 1); applyState(); resetView(true); };
   $('#bInfo').onclick = () => $('#panel').classList.toggle('open');
 }
 function buildPanel(w, obj) {
@@ -223,6 +229,11 @@ function buildPanel(w, obj) {
       ${M.rows.map(r => `<tr><td>${esc(r.mark)}</td><td>${esc(dimsOf(r.mark))}</td><td class="r">${r.q}</td><td class="r">${Math.round(r.q * r.kg)}</td></tr>`).join('')}</tbody></table></div>
     ${M.seis ? `<div><h2>Сейсмика: МС</h2><table><tbody>${[['ring', 'Швы колец'], ['pp', 'Под ПП'], ['ppg', 'ПП — горловина'], ['gorl', 'Швы горловины']].map(([k, t]) => { const l = M.seams.filter(s => s.kind === k); return l.length ? `<tr><td>${t}</td><td class="r">${l[0].mark} × ${l[0].n}${l.length > 1 ? ` × ${l.length} шв.` : ''}</td></tr>` : ''; }).join('')}
       <tr><td>Шов с плитой днища</td><td class="r">обойма — бетон лотка</td></tr></tbody></table></div>` : ''}
+    <div><h2>Основание и гидроизоляция</h2><table><tbody>
+      <tr><td>Основание (грунт ${M.grunt})</td><td class="r">${M.base.map(b => esc(b.n)).join('<br>')}${M.zamok ? '<br>водоупорный замок 600×400' : ''}</td></tr>
+      <tr><td>Снаружи</td><td class="r">битумная мастика</td></tr>
+      <tr><td>Лента на стыки</td><td class="r">${M.tapes.length} стыков · полоса 0,30 м · ${fmt(N(w, 'lenta'))} м²</td></tr></tbody></table>
+      <div class="note">Основание — по ТПР 902-09-22.84, Альбом II, лист АС-1.</div></div>
     <div class="msg ${S(w, 'msg') === 'ОК' ? '' : 'bad'}">Проверка расчёта: ${esc(S(w, 'msg'))}</div>
     <div class="note">Модель построена по данным таблицы «Авто Колодцы», переданным в ссылке. Демонстрационная версия KOLSB.</div>`;
 }
