@@ -97,19 +97,22 @@ function buildSeams(M) {
   if (!M.seis) return;
   const S2 = KC.SEAM / 2, k = M.k;
   const ringMark = M.D >= 2 ? 'МС-4' : M.D >= 1.5 ? 'МС-3' : 'МС-2', ppMark = M.D >= 2 ? 'МС-8' : M.D >= 1.5 ? 'МС-7' : 'МС-6';
-  const around = (n, off) => { const r = []; for (let j = 0; r.length < n; j++) { r.push(M.go + off + j * 2 * Math.PI / n); if (r.length < n) r.push(M.go - off - j * 2 * Math.PI / n); } return r; };
+  // по ТПР 902-09-22.84, Альбом VIII (лист с разрезами 1-1…5-5): МС равномерно по окружности от оси труб (оси выпуска):
+  // 4 шт. (7 б.) — по диагоналям, 6 шт. (8 б.) — через 60° начиная с 30°, 8 шт. (9 б.) — на осях и диагоналях;
+  // горловина — 4 шт. на осях. №1 — первая против часовой от оси выпуска
+  const even = (n, off) => Array.from({length: n}, (_, j) => M.go + off + j * 2 * Math.PI / n);
+  const offR = n => n === 4 ? Math.PI / 4 : n === 6 ? Math.PI / 6 : n % 4 === 0 ? 0 : Math.PI / n;
   M.rings.forEach((r, i) => {
-    if (i < M.rings.length - 1) M.seams.push({kind: 'ring', z: r.z1 + S2, mark: ringMark, n: k, cx: 0, cy: 0, rin: M.Rin, rout: M.Rout, angs: around(k, Math.PI / k), asym: false, below: r, above: M.rings[i + 1]});
+    if (i < M.rings.length - 1) M.seams.push({kind: 'ring', z: r.z1 + S2, mark: ringMark, n: k, cx: 0, cy: 0, rin: M.Rin, rout: M.Rout, angs: even(k, offR(k)), asym: false, below: r, above: M.rings[i + 1], name: `над ${r.mark}`});
   });
   const last = M.rings[M.rings.length - 1];
-  if (last) M.seams.push({kind: 'pp', z: last.z1 + S2, mark: ppMark, n: k, cx: 0, cy: 0, rin: M.Rin, rout: M.Rout, angs: around(k, Math.PI / k), asym: true, longOut: true, below: last, above: M.ppE});
+  if (last) M.seams.push({kind: 'pp', z: last.z1 + S2, mark: ppMark, n: k, cx: 0, cy: 0, rin: M.Rin, rout: M.Rout, angs: even(k, offR(k)), asym: true, longOut: true, below: last, above: M.ppE, name: 'под ПП'});
   const g0 = M.gorl[0] || M.koE;
-  if (g0) M.seams.push({kind: 'ppg', z: M.V + M.hpp + S2, mark: 'МС-5', n: 4, cx: M.gx, cy: M.gy, rin: .35, rout: .42, angs: around(4, Math.PI / 4), asym: true, longOut: false, below: M.ppE, above: g0});
-  let j = 0;
-  // горловина: швы чередуются, чтобы полки МС на соседних КО6 (шаг 80 мм) не упирались друг в друга; положения симметричны оси выпуска
-  const gA = [1, -1, 3, -3].map(q => M.go + q * Math.PI / 4), gB = [1.5, -1.5, 3.5, -3.5].map(q => M.go + q * Math.PI / 4);
-  M.gorl.forEach(g => { const odd = j++ % 2; M.seams.push({kind: 'gorl', alt: odd, z: g.z1 + S2, mark: 'МС-1', n: 4, cx: M.gx, cy: M.gy, rin: .35, rout: .42, angs: odd ? gB : gA, asym: false, below: g}); });
-  if (M.koE) for (let i = 0; i < M.koE.q; i++) { const odd = j++ % 2; M.seams.push({kind: 'gorl', alt: odd, z: M.koE.z0 + i * .08 + .07 + S2, mark: 'МС-1', n: 4, cx: M.gx, cy: M.gy, rin: .29, rout: .42, angs: odd ? gB : gA, asym: false, below: M.koE}); }
+  if (g0) M.seams.push({kind: 'ppg', z: M.V + M.hpp + S2, mark: 'МС-5', n: 4, cx: M.gx, cy: M.gy, rin: .35, rout: .42, angs: even(4, 0), asym: true, longOut: false, below: M.ppE, above: g0, name: 'ПП — горловина'});
+  // швы горловины — только между кольцами КС7 (в ТПР МС стоят между кольцами горловины; опорные кольца КО6 под люком
+  // в сейсмическом альбоме не предусмотрены, и полка МС 160 мм выше самого КО6 — 70 мм): КО6 ставятся на раствор без МС
+  for (let i = 0; i < M.gorl.length - 1; i++) { const g = M.gorl[i];
+    M.seams.push({kind: 'gorl', z: g.z1 + S2, mark: 'МС-1', n: 4, cx: M.gx, cy: M.gy, rin: .35, rout: .42, angs: even(4, 0), asym: false, below: g, above: M.gorl[i + 1], name: `${g.mark} — ${M.gorl[i + 1].mark}`}); }
   M.seams.forEach((s, i) => { s.key = 'ms' + i; });
 }
 
@@ -232,45 +235,71 @@ function lineBox(cx, cy, hx, hy, rot, phi) { // прямоугольник 2hx×
     let a = (-hh - o) / d, b = (hh - o) / d; if (a > b) [a, b] = [b, a]; t0 = Math.max(t0, a); t1 = Math.min(t1, b); }
   return t0 < t1 ? [t0, t1] : null;
 }
-KC.cutParts = function (M, phi) {
+function cutAt(M, phi, ox, oy) {  // плоскость через точку (ox, oy), направление φ; s — вдоль φ
+  const LC = (x, y, r) => lineCircle(x - ox, y - oy, r, phi), LB = (x, y, hx, hy, rot) => lineBox(x - ox, y - oy, hx, hy, rot, phi);
   const out = [], view = [];
   const ann = (e, z0, z1, rin, rout, key, cls) => {
-    const o = lineCircle(e.cx, e.cy, rout, phi);
+    const o = LC(e.cx, e.cy, rout);
     if (!o) { const sc = e.cx * Math.cos(phi) + e.cy * Math.sin(phi); view.push({s0: sc - rout, s1: sc + rout, z0, z1, key}); return; }
-    const i = rin > 0 ? lineCircle(e.cx, e.cy, rin, phi) : null;
+    const i = rin > 0 ? LC(e.cx, e.cy, rin) : null;
     for (const iv of minus(o, i)) out.push({s0: iv[0], s1: iv[1], z0, z1, key, cls});
   };
   for (const e of M.els) {
     if (e.kind === 'ПН') ann(e, e.z0, e.z1, 0, e.rout, e.key, 'conc');
     else if (e.kind === 'КС' || e.kind === 'КГ') ann(e, e.z0, e.z1, e.rin, e.rout, e.key, 'conc');
     else if (e.kind === 'КО') for (let i = 0; i < e.q; i++) ann(e, e.z0 + i * .08, e.z0 + i * .08 + .07, e.rin, e.rout, e.key, 'conc');
-    else if (e.kind === 'ПП') { const o = lineCircle(0, 0, e.rout, phi), h = lineCircle(M.gx, M.gy, .35, phi); if (o) for (const iv of minus(o, h)) out.push({s0: iv[0], s1: iv[1], z0: e.z0, z1: e.z1, key: e.key, cls: 'conc'}); }
+    else if (e.kind === 'ПП') { const o = LC(0, 0, e.rout), h = LC(M.gx, M.gy, .35); if (o) for (const iv of minus(o, h)) out.push({s0: iv[0], s1: iv[1], z0: e.z0, z1: e.z1, key: e.key, cls: 'conc'}); }
     else if (e.kind === 'ПД') {
-      const b = lineBox(M.gx, M.gy, 1.25, .875, M.go, phi);
-      if (b) { for (const [r, z0, z1] of [[.29, e.z0, e.z0 + .11], [.47, e.z0 + .11, e.z1]]) for (const iv of minus(b, lineCircle(M.gx, M.gy, r, phi))) out.push({s0: iv[0], s1: iv[1], z0, z1, key: e.key, cls: 'conc'}); }
+      const b = LB(M.gx, M.gy, 1.25, .875, M.go);
+      if (b) { for (const [r, z0, z1] of [[.29, e.z0, e.z0 + .11], [.47, e.z0 + .11, e.z1]]) for (const iv of minus(b, LC(M.gx, M.gy, r))) out.push({s0: iv[0], s1: iv[1], z0, z1, key: e.key, cls: 'conc'}); }
       else { const sc = M.gx * Math.cos(phi) + M.gy * Math.sin(phi); view.push({s0: sc - 1.25, s1: sc + 1.25, z0: e.z0, z1: e.z1, key: e.key}); }
     } else if (e.kind === 'ЛЮК') {
-      if (M.hat[1]) { const b = lineBox(M.gx, M.gy, .36, .36, M.go, phi); if (b) for (const iv of minus(b, lineCircle(M.gx, M.gy, .31, phi))) out.push({s0: iv[0], s1: iv[1], z0: e.z0, z1: e.z1, key: e.key, cls: 'iron'}); }
+      if (M.hat[1]) { const b = LB(M.gx, M.gy, .36, .36, M.go); if (b) for (const iv of minus(b, LC(M.gx, M.gy, .31))) out.push({s0: iv[0], s1: iv[1], z0: e.z0, z1: e.z1, key: e.key, cls: 'iron'}); }
       else ann(e, e.z0, e.z1, e.rin, e.rout, e.key, 'iron');
-      const lid = lineCircle(M.gx, M.gy, .305, phi); if (lid) out.push({s0: lid[0], s1: lid[1], z0: e.z1 - .035, z1: e.z1 - .005, key: e.key, cls: 'iron'});
+      const lid = LC(M.gx, M.gy, .305); if (lid) out.push({s0: lid[0], s1: lid[1], z0: e.z1 - .035, z1: e.z1 - .005, key: e.key, cls: 'iron'});
     }
   }
   return {out, view};
+}
+/* разрез по φ; st = {off, sJ} — ступенчатый: при |s| < sJ плоскость смещена по нормали n = (−sin φ, cos φ) на off
+   (так разрез поперёк оси выпуска проходит через ось горловины, а стенки колодца режутся по центру) */
+KC.stepOf = function (M, phi) {
+  const off = -M.gx * Math.sin(phi) + M.gy * Math.cos(phi);
+  return Math.abs(off) > .05 ? {off, sJ: Math.max(.45, Math.min(.6, M.Rin - .06))} : null;
+};
+KC.cutParts = function (M, phi, st) {
+  const base = cutAt(M, phi, 0, 0);
+  if (!st) return base;
+  const sh = cutAt(M, phi, -Math.sin(phi) * st.off, Math.cos(phi) * st.off), J = st.sJ, out = [];
+  for (const p of base.out) for (const [a, b] of [[p.s0, Math.min(p.s1, -J)], [Math.max(p.s0, J), p.s1]]) if (b - a > 1e-6) out.push({...p, s0: a, s1: b});
+  for (const p of sh.out) { const a = Math.max(p.s0, -J), b = Math.min(p.s1, J); if (b - a > 1e-6) out.push({...p, s0: a, s1: b}); }
+  // склеить куски одного элемента на границе ступени (переход в разрезе не показывается)
+  out.sort((p, q) => p.key < q.key ? -1 : p.key > q.key ? 1 : p.z0 - q.z0 || p.s0 - q.s0);
+  const m = [];
+  for (const p of out) { const l = m[m.length - 1]; if (l && l.key === p.key && Math.abs(l.z0 - p.z0) < 1e-6 && Math.abs(l.z1 - p.z1) < 1e-6 && l.cls === p.cls && p.s0 - l.s1 < 1e-6) l.s1 = Math.max(l.s1, p.s1); else m.push({...p}); }
+  const keys = new Set(m.map(p => p.key));
+  return {out: m, view: base.view.filter(v => !keys.has(v.key))};
 };
 // профиль лотка вдоль линии разреза (от стенки до стенки)
-KC.lotProfile = function (M, phi, step = .004) {
-  const ux = Math.cos(phi), uy = Math.sin(phi), pts = [];
-  for (let s = -M.Rin; s <= M.Rin + 1e-9; s += step) pts.push([s, KC.lotZ(M, s * ux, s * uy)]);
+KC.lotProfile = function (M, phi, step = .004, st = null) {
+  const ux = Math.cos(phi), uy = Math.sin(phi), nx = -uy, ny = ux, pts = [];
+  for (let s = -M.Rin; s <= M.Rin + 1e-9; s += step) { const o = st && Math.abs(s) < st.sJ ? st.off : 0; pts.push([s, KC.lotZ(M, s * ux + o * nx, s * uy + o * ny)]); }
   return pts;
 };
 
 /* ---------------- шаги сборки ---------------- */
+// расстановка МС словами: «на осях», «по диагоналям», «через 60°, от оси 30°»
+KC.msLay = function (M, s) {
+  const o = Math.round(((s.angs[0] - M.go) * 180 / Math.PI % 360 + 360) % 360) % Math.round(360 / s.n);
+  return o === 0 ? (s.n > 4 ? 'на осях и диагоналях' : 'на осях') : o === 45 && s.n === 4 ? 'по диагоналям' : `через ${Math.round(360 / s.n)}°, от оси ${o}°`;
+};
 KC.stepsOf = function (M) {
   const w = M.w, out = [], k = M.k, seis = M.seis;
   const kgs = m => M.cat[m] ? `${M.cat[m].code !== '-' ? M.cat[m].code + ' · ' : ''}${fmt(M.cat[m].kg / 1000, 2)} т` : '';
   const H = z => sgn(z - M.zg);
   const seamOf = (kind, el) => M.seams.filter(s => s.kind === kind && (s.above === el || (kind === 'gorl' && s.below === el)));
-  const msTxt = s => `${s.mark} — ${s.n} шт. через ${Math.round(360 / s.n)}°`;
+  const msLay = s => KC.msLay(M, s);
+  const msTxt = s => `${s.mark} — ${s.n} шт. ${msLay(s)}`;
   const lastRing = M.rings[M.rings.length - 1];
   for (const e of M.els) {
     const base = {els: [e.key], fc: kgs(e.mark), kind: e.kind};
@@ -288,7 +317,7 @@ KC.stepsOf = function (M) {
       const els2 = sm ? [e.key, sm.key] : [e.key];
       let todo;
       if (e.first) todo = ['На раствор М100, шов 10 мм.', hasIn ? `Проёмы у дна — ${nLow} шт.; перепадный вход — лоток ${H(M.zin)} м.` : `Проёмы под трубы — ${nLow} шт., по направлениям с плана.`, 'В этом кольце бетонируется лоток.'];
-      else if (sm) todo = [`На верх нижнего кольца — ${sm.mark} ×${sm.n} по разметке (±${Math.round(180 / sm.n * 10) / 10}° от оси выпуска).`, 'Раствор М100, шов 10 мм; затем кольцо.', hasIn ? `Проём под перепадный вход: лоток ${H(M.zin)} м.` : `Верх кольца — ${H(e.z1)} м.`];
+      else if (sm) todo = [`На верх нижнего кольца — ${sm.mark} ×${sm.n} ${msLay(sm)}.`, 'Раствор М100, шов 10 мм; затем кольцо.', hasIn ? `Проём под перепадный вход: лоток ${H(M.zin)} м.` : `Верх кольца — ${H(e.z1)} м.`];
       else todo = ['На раствор М100, шов 10 мм.', 'Кольцо — соосно нижнему, швы заполнить.', hasIn ? `Проём под перепадный вход: лоток ${H(M.zin)} м.` : `Верх кольца — ${H(e.z1)} м.`];
       out.push({...base, els: els2, t: `Кольцо ${e.mark}${e.first ? ' — нижнее' : ''}`, todo,
         chk: e.first && seis ? 'Шов с плитой — без МС: обойму даёт бетон лотка.' : 'Вертикальность, совпадение швов.'});
@@ -302,9 +331,9 @@ KC.stepsOf = function (M) {
       const els2 = [e.key].concat(sp ? [sp.key] : [], sg.map(s => s.key));
       const lines = [];
       if (sp) lines.push(`На стыке с ПП — ${msTxt(sp)} (длинная полка внутрь, по краю лаза).`);
-      if (e.kind === 'КО') lines.push('Добор горловины до отметки люка; каждое кольцо — на раствор.', 'Количество округлено вверх: люк чуть выше, а не ниже.');
+      if (e.kind === 'КО') lines.push(`Добор до отметки люка; каждое кольцо — на раствор М100${seis ? ', без МС' : ''}.`, 'Количество округлено вверх: люк чуть выше, а не ниже.');
       else lines.push('На раствор М100, соосно лазу.');
-      if (sg.length) lines.push(`На каждый шов сверху — ${sg[0].mark} по 4 шт. (${sg.length} шв.).`);
+      if (sg.length) lines.push(`На шов сверху — ${sg[0].mark} ×4 на осях.`);
       else if (e.kind === 'КГ') lines.push('Высокие кольца ставятся первыми.');
       out.push({...base, els: els2, t: e.kind === 'КО' ? `Кольца опорные КО6${e.q > 1 ? ' ×' + e.q : ''}` : `Кольцо горловины ${e.mark}`,
         fc: e.kind === 'КО' ? kgs('КО6') + (e.q > 1 ? ` · ${e.q} шт.` : '') : kgs(e.mark), todo: lines.slice(0, 3), chk: e.kind === 'КО' ? 'Отметка под люк.' : 'Соосность с лазом.'});
