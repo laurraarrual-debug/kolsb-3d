@@ -107,12 +107,16 @@ function buildSeams(M) {
   });
   const last = M.rings[M.rings.length - 1];
   if (last) M.seams.push({kind: 'pp', z: last.z1 + S2, mark: ppMark, n: k, cx: 0, cy: 0, rin: M.Rin, rout: M.Rout, angs: even(k, offR(k)), asym: true, longOut: true, below: last, above: M.ppE, name: 'под ПП'});
-  const g0 = M.gorl[0] || M.koE;
+  const g0 = M.gorl[0];   // МС-5 на стык ПП — горловина встаёт только под кольцо КС7 (под КО6 мешает его свес над лазом)
   if (g0) M.seams.push({kind: 'ppg', z: M.V + M.hpp + S2, mark: 'МС-5', n: 4, cx: M.gx, cy: M.gy, rin: .35, rout: .42, angs: even(4, 0), asym: true, longOut: false, below: M.ppE, above: g0, name: 'ПП — горловина'});
   // швы горловины — только между кольцами КС7 (в ТПР МС стоят между кольцами горловины; опорные кольца КО6 под люком
   // в сейсмическом альбоме не предусмотрены, и полка МС 160 мм выше самого КО6 — 70 мм): КО6 ставятся на раствор без МС
   for (let i = 0; i < M.gorl.length - 1; i++) { const g = M.gorl[i];
     M.seams.push({kind: 'gorl', z: g.z1 + S2, mark: 'МС-1', n: 4, cx: M.gx, cy: M.gy, rin: .35, rout: .42, angs: even(4, 0), asym: false, below: g, above: M.gorl[i + 1], name: `${g.mark} — ${M.gorl[i + 1].mark}`}); }
+  // стык КС7 — нижнее КО6: КО6 нависает внутрь на 60 мм (Ø580 против Ø700), поэтому только МС-5 —
+  // короткой полкой внутрь вниз по КС7, длинной снаружи (наружные грани обоих колец Ø840 в одну линию); дополнительно к ТПР
+  const gl = M.gorl[M.gorl.length - 1];
+  if (gl && M.koE) M.seams.push({kind: 'gko', z: gl.z1 + S2, mark: 'МС-5', n: 4, cx: M.gx, cy: M.gy, rin: .35, rout: .42, angs: even(4, 0), asym: true, longOut: true, below: gl, above: M.koE, name: `${gl.mark} — КО6`});
   M.seams.forEach((s, i) => { s.key = 'ms' + i; });
 }
 
@@ -328,10 +332,12 @@ KC.stepsOf = function (M) {
         chk: sm ? `${sm.mark} по спецификации ${2 * sm.n} шт., ${sm.n} — запас.` : 'Лаз над скобами.'});
     } else if (e.kind === 'КГ' || e.kind === 'КО') {
       const first = (M.gorl[0] || M.koE) === e, sp = first ? seamOf('ppg', e)[0] : null, sg = M.seams.filter(s => s.kind === 'gorl' && s.below === e);
-      const els2 = [e.key].concat(sp ? [sp.key] : [], sg.map(s => s.key));
+      const sk = e.kind === 'КО' ? M.seams.find(s => s.kind === 'gko') : null;
+      const els2 = [e.key].concat(sp ? [sp.key] : [], sk ? [sk.key] : [], sg.map(s => s.key));
       const lines = [];
       if (sp) lines.push(`На стыке с ПП — ${msTxt(sp)} (длинная полка внутрь, по краю лаза).`);
-      if (e.kind === 'КО') lines.push(`Добор до отметки люка; каждое кольцо — на раствор М100${seis ? ', без МС' : ''}.`, 'Количество округлено вверх: люк чуть выше, а не ниже.');
+      if (sk) lines.push(`На верх ${sk.below.mark} — МС-5 ×4 на осях: короткая полка внутрь вниз, длинная снаружи.`);
+      if (e.kind === 'КО') lines.push(`Добор до отметки люка; каждое кольцо — на раствор М100${seis ? ', между КО6 без МС' : ''}.`, 'Количество округлено вверх: люк чуть выше, а не ниже.');
       else lines.push('На раствор М100, соосно лазу.');
       if (sg.length) lines.push(`На шов сверху — ${sg[0].mark} ×4 на осях.`);
       else if (e.kind === 'КГ') lines.push('Высокие кольца ставятся первыми.');
