@@ -69,6 +69,8 @@ KC.model = function (w, angs) {
   if (M.per && M.Hst > 0 && S(w, 'wall')) {
     let zz = 0; S(w, 'wall').split(';').forEach((p, i) => { const [m, mm] = p.split('|'); const h = +mm / 1000; M.wall.push({mark: m, z0: zz, z1: zz + h, pos: pos(m), key: 'w' + i}); zz += h; }); }
   M.tw = .1; M.dw = M.Rin - (M.D >= 2 ? .5 : .35); M.bw = M.D >= 2 ? 1.6 : 1.2;
+  // проём внизу нижней панели СР-11 (ТПР 902-09-22.84, Альбом VII, КЖИ СР-11): ширина c по центру, высота 150 — проток из приямка в лоток
+  M.wcut = {c: M.bw >= 1.6 ? 1.0 : .6, h: .15};
   // скобы
   M.steps = [];
   for (let k = 0; k < N(w, 'sk'); k++) { const zz = M.ztop - .42 - k * .3; if (zz < .35) break; M.steps.push(zz); }
@@ -189,9 +191,11 @@ function buildLotok(M) {
 KC.chDist = function (M, x, y) { let d = 1e9; for (const c of M.ch) { const v = distPoly(c.pts, x, y); if (v < d) d = v; } return d; };
 // приямок за стенкой (перепадные): >0 — за стенкой
 KC.behindWall = (M, x, y) => M.hasWall ? (x * M.uin[0] + y * M.uin[1]) - M.dw : -1;
+// поперёк стенки: смещение вдоль стенки от её середины
+KC.alongWall = (M, x, y) => M.hasWall ? -x * M.uin[1] + y * M.uin[0] : 1e9;
 // отметка поверхности лотка
 KC.lotZ = function (M, x, y) {
-  if (M.hasWall && KC.behindWall(M, x, y) > -M.tw) return KC.behindWall(M, x, y) > 0 ? 0 : M.hb;
+  if (M.hasWall && KC.behindWall(M, x, y) > -M.tw) return KC.behindWall(M, x, y) > 0 || Math.abs(KC.alongWall(M, x, y)) < M.wcut.c / 2 ? 0 : M.hb;
   const w = M.chW, d = KC.chDist(M, x, y);
   if (d < w) return M.hv + w - Math.sqrt(w * w - d * d);
   return M.hb + KC.SHELF_I * (d - w);
@@ -357,7 +361,7 @@ KC.stepsOf = function (M) {
                seis ? 'Бетон у стенки — обойма нижнего кольца.' : (M.per ? (M.hv > .001 ? `Приямок водобоя ${fmt(M.hv)} м, на дне — стальной лист.` : 'За стенкой на днище — стальной лист.') : 'Повороты — плавной кривой.')],
         chk: 'Канал гладкий, без уступов.'});
       M.wall.forEach((p, i) => out.push({els: [p.key].concat(i === 0 ? ['wall0'] : []), t: `Стенка-растекатель ${p.mark}`, fc: `${M.cat[p.mark] ? M.cat[p.mark].kg + ' кг · ' : ''}т.пр. 902-09-22.84`,
-        todo: [/СР-11/.test(p.mark) ? 'Нижняя панель, вырезом вниз — проток в лоток.' : /СР-12/.test(p.mark) ? 'Верхняя панель — ставится последней.' : 'Средняя панель.', 'Крепление к кольцам — по Альбому VI этой т.пр.'],
+        todo: [/СР-11/.test(p.mark) ? `Нижняя панель, проёмом вниз: ${Math.round(M.wcut.c * 1000)}×150 — проток из приямка в лоток.` : /СР-12/.test(p.mark) ? 'Верхняя панель — ставится последней.' : 'Средняя панель.', 'Крепление к кольцам — по Альбому VI этой т.пр.'],
         chk: i === M.wall.length - 1 ? `Вход на ${fmt(M.Hst - M.zin)} м ниже верха стенки.` : 'Панель в плоскости стенки.'}));
     }
   }
@@ -397,7 +401,7 @@ KC.unpack = async function (s) {
 
 /* ---------------- 3D-сцена (three.js) ---------------- */
 KC.COL = {ring: 0xc9c5bb, ring2: 0xbfbbb0, plate: 0xaaa69c, gorl: 0xd5cfc2, ko: 0xe0dacc, lot: 0xbdb8ad, chan: 0x7f95a4, pipe: 0xd0712f, pipeIn: 0x9c4f1d,
-  iron: 0x34383d, lid: 0x4e555c, step: 0xd9a21b, wall: 0x8d77bd, steel: 0x4a5560, ms: 0x2f6f9f, hi: 0xf2a516, coat: 0x1c1e20, tape: 0x30363f, cap: 0xe9e4d8,
+  iron: 0x34383d, lid: 0x4e555c, step: 0xd9a21b, wall: 0x8d77bd, steel: 0x4a5560, ms: 0x2f6f9f, hi: 0xf2a516, coat: 0x1c1e20, tape: 0xc0503a, cap: 0xe9e4d8,
   grass: 0x76a650, soil: 0x9a7b5a, lean: 0xb0aca2, mortar: 0xc9c1b0, clay: 0x8f6a4a, comp: 0xa48a6c, asph: 0x3f4348, gravel: 0x9d978c, tile: 0xb8b1a5, sand: 0xd9c9a3, edge: 0x4a4a4a};
 KC.buildScene = function (M, THREE) {
   const C = KC.COL, scene = new THREE.Scene(), meshes = [], mats = new Map();
@@ -498,7 +502,14 @@ KC.buildScene = function (M, THREE) {
   // стенка-растекатель и стальной лист
   if (M.hasWall) {
     const ux = M.uin[0], uy = M.uin[1], ang = M.pipes[1].ang;
-    M.wall.forEach(p => put(new THREE.BoxGeometry(M.tw, M.bw, p.z1 - p.z0 - .006).translate(M.dw - M.tw / 2, 0, (p.z0 + p.z1) / 2), C.wall, p.key, {rotz: ang, lvl: lvlAt(p.z0), edges: true}));
+    // нижняя панель — с проёмом c×150 по центру низа; остальные — сплошные
+    const perm = new THREE.Matrix4().set(0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1);   // (u, v, глубина) → (по радиусу, вдоль стенки, вверх)
+    M.wall.forEach((p, i) => {
+      const hh = p.z1 - p.z0 - .006, b = M.bw / 2, sh = new THREE.Shape();
+      if (i === 0) { const c = M.wcut.c / 2, h = M.wcut.h; sh.moveTo(-b, 0); sh.lineTo(-c, 0); sh.lineTo(-c, h); sh.lineTo(c, h); sh.lineTo(c, 0); sh.lineTo(b, 0); sh.lineTo(b, hh); sh.lineTo(-b, hh); sh.closePath(); }
+      else { sh.moveTo(-b, 0); sh.lineTo(b, 0); sh.lineTo(b, hh); sh.lineTo(-b, hh); sh.closePath(); }
+      const g = new THREE.ExtrudeGeometry(sh, {depth: M.tw, bevelEnabled: false}).applyMatrix4(perm).translate(M.dw - M.tw, 0, p.z0);
+      put(g, C.wall, p.key, {rotz: ang, lvl: lvlAt(p.z0), edges: true}); });
     const ch = d => Math.sqrt(Math.max(.0001, (M.Rin - .01) ** 2 - d * d));
     const sh = new THREE.Shape(); sh.moveTo(M.dw, -ch(M.dw));
     for (let i = 0; i <= 24; i++) { const y = -ch(M.dw) + 2 * ch(M.dw) * i / 24; sh.lineTo(Math.max(M.dw, Math.sqrt(Math.max(0, (M.Rin - .01) ** 2 - y * y))), y); }
@@ -530,7 +541,7 @@ KC.buildScene = function (M, THREE) {
   for (const b of M.base) put(new THREE.CylinderGeometry(b.r, b.r, b.z1 - b.z0, 96).rotateX(Math.PI / 2).translate(0, 0, (b.z0 + b.z1) / 2), C[b.col], 'base', {lvl: -1, edges: b.cls !== 'bitl'});
   if (M.zamok) put(ringGeo(M.zamok.rin + .003, M.zamok.rout, M.zamok.z1 - M.zamok.z0), C.clay, 'base', {pos: [0, 0, M.zamok.z0], lvl: -1, edges: true});
   // битумная гидроизоляция снаружи (тонкая оболочка) и лента на стыках
-  const shell = (cx, cy, r, z0, z1, key, col, L, seg = 96) => put(new THREE.CylinderGeometry(r, r, z1 - z0, seg, 1, true).rotateX(Math.PI / 2).translate(0, 0, (z0 + z1) / 2), col, key, {pos: [cx, cy, 0], lvl: L, m: col === C.tape ? {roughness: .35, metalness: .15} : {roughness: .45, metalness: .05}});
+  const shell = (cx, cy, r, z0, z1, key, col, L, seg = 96) => put(new THREE.CylinderGeometry(r, r, z1 - z0, seg, 1, true).rotateX(Math.PI / 2).translate(0, 0, (z0 + z1) / 2), col, key, {pos: [cx, cy, 0], lvl: L, edges: col === C.tape, m: col === C.tape ? {roughness: .5, metalness: 0} : {roughness: .45, metalness: .05}});
   for (const e of M.els) {
     const L = order.get(e.key);
     if (e.kind === 'КС') shell(0, 0, M.Rout + .003, e.z0, e.z1, 'coat', C.coat, L);
@@ -539,7 +550,14 @@ KC.buildScene = function (M, THREE) {
     else if (e.kind === 'КГ') shell(e.cx, e.cy, .423, e.z0, e.z1, 'coat', C.coat, L, 64);
     else if (e.kind === 'КО') for (let i = 0; i < e.q; i++) shell(e.cx, e.cy, .423, e.z0 + i * .08, e.z0 + i * .08 + .07, 'coat', C.coat, L, 64);
   }
-  for (const t of M.tapes) { const z0 = Math.max(t.z - M.tapeW / 2, t.lo >= 0 ? t.lo : -1e9), L = (order.get(t.below.key) ?? 0) + .5; shell(t.cx, t.cy, t.r + .007, z0, t.z + M.tapeW / 2, 'tape', C.tape, L, t.part === 'r' ? 96 : 64); }
+  // ленты: перекрывающиеся полосы (на горловине швы КО6 через 80 мм) показываем одной полосой
+  const gTop = M.koE ? M.koE.z1 : M.gorl.length ? M.gorl[M.gorl.length - 1].z1 : 1e9, tb = [];
+  for (const t of M.tapes) {
+    const z0 = Math.max(t.z - M.tapeW / 2, t.lo >= 0 ? t.lo : -1e9), z1 = t.part === 'g' ? Math.min(t.z + M.tapeW / 2, gTop) : t.z + M.tapeW / 2, L = (order.get(t.below.key) ?? 0) + .5;
+    const pv = tb.find(q => q.cx === t.cx && q.cy === t.cy && q.r === t.r && z0 <= q.z1 + .005 && z1 >= q.z0 - .005);
+    if (pv) { pv.z0 = Math.min(pv.z0, z0); pv.z1 = Math.max(pv.z1, z1); } else tb.push({cx: t.cx, cy: t.cy, r: t.r, z0, z1, L, seg: t.part === 'r' ? 96 : 64});
+  }
+  for (const q of tb) shell(q.cx, q.cy, q.r + .007, q.z0, q.z1, 'tape', C.tape, q.L, q.seg);
   // покрытие у люка
   buildSurface(M, THREE, put, shapeGeo, C, M.els.length);
   // свет

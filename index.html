@@ -164,6 +164,8 @@ function applyState() {
     const k = m.userData.key;
     let v = (m.userData.cap ? cut : true) && (!done || done.has(k));
     if ((k === 'coat' || k === 'tape') && !done && !showCoat) v = false;
+    if (/^ms\d/.test(k) && !cut && (showCoat || (done && done.has('coat')))) v = false;   // МС — под мастикой и лентой
+    if (k === 'surf' && showCoat && !done) v = false;   // гидроизоляция: покрытие у люка убираем, чтобы была видна горловина
     m.visible = !!v;
     if (m.isMesh && !m.userData.line) m.material = (st && !st.nohi && cur.has(k)) ? SC.hiMat : m.userData.base;
   }
