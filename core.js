@@ -406,7 +406,7 @@ KC.unpack = async function (s) {
 
 /* ---------------- 3D-сцена (three.js) ---------------- */
 KC.COL = {ring: 0xc9c5bb, ring2: 0xbfbbb0, plate: 0xaaa69c, gorl: 0xd5cfc2, ko: 0xe0dacc, lot: 0xbdb8ad, chan: 0x7f95a4, pipe: 0xd0712f, pipeIn: 0x9c4f1d,
-  iron: 0x34383d, lid: 0x4e555c, step: 0xd9a21b, wall: 0x8d77bd, steel: 0x4a5560, ms: 0x2f6f9f, hi: 0xf2a516, coat: 0x6f747a, tape: 0x16181b, cap: 0xe9e4d8,
+  iron: 0x34383d, lid: 0x4e555c, step: 0xd9a21b, wall: 0x8d77bd, steel: 0x4a5560, ms: 0x2f6f9f, hi: 0xf2a516, coat: 0x50555b, tape: 0x16181b, cap: 0xe9e4d8,
   grass: 0x76a650, soil: 0x9a7b5a, lean: 0xb0aca2, mortar: 0xc9c1b0, clay: 0x8f6a4a, comp: 0xa48a6c, asph: 0x3f4348, gravel: 0x9d978c, tile: 0xb8b1a5, sand: 0xd9c9a3, edge: 0x4a4a4a};
 KC.buildScene = function (M, THREE) {
   const C = KC.COL, scene = new THREE.Scene(), meshes = [], mats = new Map();
