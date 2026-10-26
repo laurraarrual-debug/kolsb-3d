@@ -574,11 +574,15 @@ KC.buildScene = function (M, THREE) {
     const rows = Math.max(1, Math.round(h / .3)), c = document.createElement('canvas'); c.width = 2048; c.height = Math.max(48, Math.round(2048 / (2 * Math.PI * r) * h));
     const g = c.getContext('2d'); g.fillStyle = KC.TAPE_BG || '#16181b'; g.fillRect(0, 0, c.width, c.height);
     g.fillStyle = '#5d6772'; g.fillRect(0, 0, c.width, 5); g.fillRect(0, c.height - 5, c.width, 5);
-    const txt = KC.TAPE_TEXT || 'ЛЕНТА', circ = 2 * Math.PI * r, n = Math.max(2, Math.round(circ / (txt.length > 8 ? 2.4 : 1.6))), segW = c.width / n;
-    const arc = Math.min(txt.length > 8 ? 1.2 : .55, r * 1.4), pxm = c.width / circ;   // длина надписи по дуге, м; пикселей на метр
-    const lines = txt.length > 8 && txt.includes(' ') ? [txt.slice(0, txt.lastIndexOf(' ')), txt.slice(txt.lastIndexOf(' ') + 1)] : [txt];   // длинная — в две строки
-    g.font = 'bold 100px Arial, sans-serif'; const fit = arc * pxm / Math.max(...lines.map(l => g.measureText(l).width)) * 100;
-    const fs = Math.round(Math.min(c.height / rows * (lines.length > 1 ? .33 : .42), fit));
+    const circ = 2 * Math.PI * r, pxm = c.width / circ;   // пикселей на метр по окружности
+    g.font = 'bold 100px Arial, sans-serif';
+    const size = txt => {   // длинная надпись — в две строки, дуга до 1,2 м; короткая — одной строкой крупно
+      const lng = txt.length > 8, lines = lng && txt.includes(' ') ? [txt.slice(0, txt.lastIndexOf(' ')), txt.slice(txt.lastIndexOf(' ') + 1)] : [txt];
+      const arc = Math.min(lng ? 1.2 : .55, r * 1.4), fit = arc * pxm / Math.max(...lines.map(l => g.measureText(l).width)) * 100;
+      return {txt, lng, lines, fs: Math.round(Math.min((c.height - 10) / rows * (lines.length > 1 ? .33 : .55), fit))}; };
+    let S = size(KC.TAPE_TEXT || 'ЛЕНТА');
+    if (S.lng && S.fs / pxm < .075) S = size('ЛЕНТА');   // узкая полоса (у днища) и горловина: буквы мельче 75 мм — пишем коротко и крупно
+    const {txt, lines, fs} = S, n = Math.max(2, Math.round(circ / (S.lng ? 2.4 : 1.6))), segW = c.width / n;
     g.font = `bold ${fs}px Arial, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#2f86e0';
     for (let i = 0; i < rows; i++) { const y = c.height * (i + .5) / rows + 2;
       for (let j = 0; j < n; j++) lines.forEach((l, k) => g.fillText(l, segW * (j + .5), y + (k - (lines.length - 1) / 2) * fs * 1.12)); }
@@ -589,6 +593,13 @@ KC.buildScene = function (M, THREE) {
   };
   for (const q of tb) { const r = q.r + .007, mt = tapeMat(q.z1 - q.z0, r);
     put(new THREE.CylinderGeometry(r, r, q.z1 - q.z0, q.seg, 1, true).rotateX(Math.PI / 2).translate(0, 0, (q.z0 + q.z1) / 2), C.tape, 'tape', Object.assign({pos: [q.cx, q.cy, 0], lvl: q.L, edges: true}, mt ? {mat: mt} : {m: {roughness: .32}})); }
+  // стык с днищем — угловой: полоса Г-образно, половина на кольцо, половина на выступ плиты днища (остаток — на её торец)
+  { const pn = M.els[0], half = M.tapeW / 2;
+    if (pn && pn.kind === 'ПН' && pn.rout > M.Rout + .02 && M.tapes.some(t => t.lo === 0)) {
+      const ledge = pn.rout - M.Rout, r1 = M.Rout + Math.min(half, ledge) + .004, L = (order.get(pn.key) ?? 0) + .5, rest = half - ledge;
+      const sh = new THREE.Shape(); sh.absarc(0, 0, r1, 0, Math.PI * 2, false); const hl = new THREE.Path(); hl.absarc(0, 0, M.Rout + .004, 0, Math.PI * 2, true); sh.holes.push(hl);
+      put(shapeGeo(sh, .003, 96).translate(0, 0, pn.z1 + .005), C.tape, 'tape', {lvl: L, edges: true, m: {roughness: .32}});
+      if (rest > .005) put(new THREE.CylinderGeometry(pn.rout + .008, pn.rout + .008, rest, 96, 1, true).rotateX(Math.PI / 2).translate(0, 0, pn.z1 - rest / 2), C.tape, 'tape', {lvl: L, edges: true, m: {roughness: .32}}); } }
   // покрытие у люка
   buildSurface(M, THREE, put, shapeGeo, C, M.els.length);
   // свет
