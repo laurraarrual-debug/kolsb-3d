@@ -1,5 +1,237 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
 <title>Колодец 3D</title>
-<style>body{margin:0;font:16px/1.5 system-ui,Segoe UI,Arial,sans-serif;background:#f4f5f6;color:#1d2329;display:flex;min-height:100vh;align-items:center;justify-content:center}div{max-width:420px;padding:24px;text-align:center}</style>
-</head><body><div><h1>Колодец 3D</h1><p>Страница просмотра 3D-моделей колодцев. Скоро здесь появится модель — откройте её по QR-коду из паспорта сборки.</p></div></body></html>
+<style>
+:root{
+  --bg:#e7eaec; --stage:#dfe3e5; --surface:#ffffff; --surface-2:#f3f5f6; --ink:#1c2226; --muted:#5d6872; --line:#d2d8db;
+  --accent:#c98200; --accent-soft:#f6e7c8; --ok:#2e7d4f; --warn:#b3261e; --steel:#2f6f9f; --violet:#6d5aa8;
+  --f:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif; --fc:"Arial Narrow","Roboto Condensed",system-ui,sans-serif; --fm:ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#14171a; --stage:#1b1f23; --surface:#1f2428; --surface-2:#262c31; --ink:#e6eaec; --muted:#9aa6af; --line:#343b41;
+  --accent:#f0a92a; --accent-soft:#3a2f17; --ok:#6cc792; --warn:#f2867c; --steel:#79b2dd; --violet:#a796e0; } }
+:root[data-theme="dark"]{ --bg:#14171a; --stage:#1b1f23; --surface:#1f2428; --surface-2:#262c31; --ink:#e6eaec; --muted:#9aa6af; --line:#343b41;
+  --accent:#f0a92a; --accent-soft:#3a2f17; --ok:#6cc792; --warn:#f2867c; --steel:#79b2dd; --violet:#a796e0; }
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:14px/1.45 var(--f);-webkit-text-size-adjust:100%}
+.app{position:fixed;inset:0;display:grid;grid-template-columns:minmax(0,1fr) 380px}
+.stage{position:relative;background:var(--stage);overflow:hidden;touch-action:none}
+#view{position:absolute;inset:0}
+#view canvas{display:block}
+.top{position:absolute;left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));top:max(10px,env(safe-area-inset-top));display:flex;justify-content:space-between;gap:8px;pointer-events:none}
+.ttl{pointer-events:auto;background:color-mix(in srgb,var(--surface) 90%,transparent);border:1px solid var(--line);border-radius:10px;padding:8px 12px;backdrop-filter:blur(6px);max-width:75%}
+.ttl .k{font:600 10.5px var(--fc);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.ttl h1{margin:2px 0 0;font:700 21px/1.15 var(--f)} .ttl h1 b{color:var(--accent)}
+.ttl .s{font-size:12.5px;color:var(--muted)}
+.tools{position:absolute;left:max(10px,env(safe-area-inset-left));right:max(10px,env(safe-area-inset-right));bottom:max(10px,env(safe-area-inset-bottom));display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+.btn{font:600 14px/1 var(--f);border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:9px;padding:11px 13px;cursor:pointer;min-height:42px}
+.btn[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.btn.main{background:var(--accent);border-color:var(--accent);color:#1c1608}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.stepcard{position:absolute;left:max(10px,env(safe-area-inset-left));right:max(10px,env(safe-area-inset-right));bottom:calc(max(10px,env(safe-area-inset-bottom)) + 56px);background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;box-shadow:0 6px 24px rgba(0,0,0,.16);display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center}
+.stepcard[hidden]{display:none}
+.stepcard .n{font:800 22px var(--f);color:var(--accent);min-width:1.6em;text-align:center}
+.stepcard b{display:block;font-size:15.5px;line-height:1.2}
+.stepcard .fc{font-size:12px;color:var(--muted)}
+.stepcard ul{margin:4px 0 0;padding-left:17px;font-size:13px}
+.stepcard .chk{font-size:12.5px;color:var(--ok);margin-top:2px}
+.stepcard .nav{display:flex;flex-direction:column;gap:6px}
+.lbl{position:absolute;left:0;top:0;transform:translate(8px,-50%);font:600 11.5px/1.15 var(--f);color:var(--ink);background:color-mix(in srgb,var(--surface) 86%,transparent);border:1px solid var(--line);border-radius:6px;padding:3px 6px;white-space:nowrap;pointer-events:none}
+.lbl small{display:block;font:500 10.5px var(--fm);color:var(--muted)}
+.lbl.hi{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.lbl::before{content:"";position:absolute;left:-8px;top:50%;width:8px;border-top:1px solid var(--muted)}
+.panel{background:var(--surface);border-left:1px solid var(--line);overflow:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
+.panel h2{font:700 15px var(--f);margin:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:2px 9px;background:var(--surface-2)}
+.chip.per{border-color:var(--violet);color:var(--violet)} .chip.ms{border-color:var(--steel);color:var(--steel)}
+dl.facts{display:grid;grid-template-columns:1fr auto;gap:4px 12px;margin:0;font-variant-numeric:tabular-nums}
+dl.facts dt{color:var(--muted)} dl.facts dd{margin:0;text-align:right;font-weight:600}
+table{border-collapse:collapse;width:100%;font-size:12.5px;font-variant-numeric:tabular-nums}
+th{font:600 10.5px var(--fc);letter-spacing:.05em;text-transform:uppercase;color:var(--muted);text-align:left;padding:4px 5px;border-bottom:1px solid var(--line)}
+td{padding:5px;border-bottom:1px solid var(--line);vertical-align:top}
+td.r,th.r{text-align:right}
+tr.sum td{font-weight:700;background:var(--surface-2)} tr.sum td.ok{color:var(--ok)}
+.note{font-size:12px;color:var(--muted)}
+.msg{font-size:13px;border-radius:8px;padding:8px 10px;background:var(--surface-2)}
+.msg.bad{color:var(--warn)}
+.sheetbtn{display:none}
+.land{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--bg)}
+.land .card{max-width:440px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px;text-align:center}
+.land h1{font:700 22px var(--f);margin:0 0 8px}
+.land p{color:var(--muted);margin:0 0 16px}
+.err{color:var(--warn)}
+@media (max-width:860px){
+  .app{grid-template-columns:1fr}
+  .panel{position:fixed;left:0;right:0;bottom:0;max-height:78vh;border-left:0;border-top:1px solid var(--line);border-radius:16px 16px 0 0;transform:translateY(100%);transition:transform .25s ease;z-index:5;padding-bottom:max(16px,env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,.2)}
+  .panel.open{transform:none}
+  .sheetbtn{display:inline-block}
+  .ttl h1{font-size:18px}
+  .btn{padding:10px 11px;font-size:13.5px}
+}
+@media (prefers-reduced-motion: reduce){ *{transition:none!important} }
+</style>
+</head>
+<body>
+<div class="app" id="app" hidden>
+  <section class="stage" aria-label="3D-модель колодца">
+    <div id="view"></div>
+    <div id="labels"></div>
+    <div class="top"><div class="ttl"><div class="k" id="kk">Колодец 3D · паспорт сборки</div><h1 id="ttl">Колодец</h1><div class="s" id="sub"></div></div>
+      <button class="btn" id="bTheme" style="pointer-events:auto" aria-label="Светлая или тёмная тема">◐</button></div>
+    <div class="stepcard" id="card" hidden>
+      <div class="n" id="cn">1</div>
+      <div><b id="ct"></b><div class="fc" id="cf"></div><ul id="cu"></ul><div class="chk" id="cc"></div></div>
+      <div class="nav"><button class="btn main" id="next" aria-label="Следующий шаг">▶</button><button class="btn" id="prev" aria-label="Предыдущий шаг">◀</button></div>
+    </div>
+    <div class="tools">
+      <button class="btn main" id="bSteps" aria-pressed="false">Как собрать</button>
+      <button class="btn" id="bCut" aria-pressed="false">Разрез</button>
+      <button class="btn" id="bExp" aria-pressed="false">Разобрать</button>
+      <button class="btn" id="bLbl" aria-pressed="true">Подписи</button>
+      <button class="btn" id="bReset">Вид</button>
+      <button class="btn sheetbtn" id="bInfo">Данные</button>
+    </div>
+  </section>
+  <aside class="panel" id="panel"></aside>
+</div>
+<div class="land" id="land" hidden><div class="card"><h1>Колодец 3D</h1><p id="landTxt">Эта страница показывает 3D-модель колодца. Откройте её по QR-коду из паспорта сборки.</p><button class="btn main" id="bDemo">Показать пример</button></div></div>
+<script src="vendor/three.min.js"></script>
+<script src="vendor/OrbitControls.js"></script>
+<script src="core.js"></script>
+<script>
+"use strict";
+const DEMO = 'k1TY4xTgMxEEWvEk39Y83Ya6-9OUqUAomejoZBiigpaOiCyIpwgVBEoAhyhtkbISfaJI3led-e9x_onjoB3VA3Z0jmBeiOOrJ-WNqP_dpuWE7sYF_Ds-1sPzzZlkC31M1JCAyylX3Y51QIjeMAcRGB-Zi8Esg29Xi1rX3bwf4I7MSDHUcw2DXg-i8juAB2OSBWnNr6LoKst3eJdNJIdOVyTYQAAYn11kuc-lpHKqv7vYBdm9AklyEuZfhRnQvYxYJjSRodKloiz0aPBhXm85xUNCWenWV1zqe4dUFFJRynddKgdc_b8GL7iW1qJOmiUc_MKv5KJbGSlFlzuTaecSzX5nbEEi8FKswNqy9jjZhPpGVCQQbZ2la0ePwH';
+const $ = s => document.querySelector(s);
+const {fmt, sgn, esc, N, S} = KC;
+let M, SC, renderer, camera, controls, steps, stepIdx = -1, cut = false, expT = 0, expTarget = 0, showLbl = true, lblEls = [], needs = true;
+
+function theme() { try { const t = localStorage.getItem('kolsb-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {} }
+theme();
+$('#bTheme').onclick = () => { const cur = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); const n = cur === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = n; try { localStorage.setItem('kolsb-theme', n); } catch (e) {} setBg(); needs = true; };
+function setBg() { if (renderer) renderer.setClearColor(new THREE.Color(getComputedStyle(document.documentElement).getPropertyValue('--stage').trim() || '#dfe3e5'), 1); }
+
+async function start(payload) {
+  const {w, angsDeg, obj} = await KC.unpack(payload);
+  M = KC.model(w, angsDeg.map(d => d * Math.PI / 180));
+  steps = KC.stepsOf(M);
+  $('#land').hidden = true; $('#app').hidden = false;
+  document.title = `Колодец №${w.nom} — 3D`;
+  $('#ttl').innerHTML = `Колодец <b>№${esc(w.nom)}</b>`;
+  $('#sub').textContent = [S(w, 'mark'), 'Ø' + Math.round(M.D * 1000), (S(w, 'placeName') || '').toLowerCase(), 'люк ' + S(w, 'hatch')].filter(Boolean).join(' · ');
+  if (obj) $('#kk').textContent = obj;
+  initGL(); buildPanel(w, obj); frame();
+}
+function initGL() {
+  const el = $('#view');
+  renderer = new THREE.WebGLRenderer({antialias: true}); renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2)); renderer.localClippingEnabled = true;
+  el.appendChild(renderer.domElement); setBg();
+  SC = KC.buildScene(M, THREE); SC.caps = KC.addCaps(SC, M.go);
+  SC.plane = new THREE.Plane(new THREE.Vector3(-Math.sin(M.go), Math.cos(M.go), 0), 0);
+  SC.hiMat = new THREE.MeshStandardMaterial({color: KC.COL.hi, roughness: .6, side: THREE.DoubleSide}); SC.coatMat = new THREE.MeshStandardMaterial({color: KC.COL.coat, roughness: .7, side: THREE.DoubleSide});
+  SC.mats.push(SC.hiMat, SC.coatMat);
+  camera = new THREE.PerspectiveCamera(32, 1, .05, 200); camera.up.set(0, 0, 1);
+  controls = new THREE.OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.dampingFactor = .12; controls.addEventListener('change', () => { needs = true; });
+  resetView(); applyState();
+  const lab = $('#labels'); lab.innerHTML = '';
+  lblEls = M.els.map(e => { const d = document.createElement('div'); d.className = 'lbl'; const h = e.kind === 'ЛЮК' ? Math.round(M.Hl * 1000) : (M.dims[e.mark] ? M.dims[e.mark].h : Math.round((e.z1 - e.z0) * 1000));
+    d.innerHTML = `${esc(e.mark)}${e.q > 1 ? ' ×' + e.q : ''}<small>h ${h}${e.q > 1 ? ' ×' + e.q : ''} мм</small>`; lab.appendChild(d); return {e, d}; });
+  addEventListener('resize', () => { needs = true; });
+  requestAnimationFrame(loop);
+}
+function resetView() {
+  const box = new THREE.Box3(); for (const m of SC.meshes) if (!m.userData.cap) box.expandByObject(m);
+  const c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3()).length();
+  const vw = $('#view'), aspect = (vw.clientWidth / vw.clientHeight) || 1; camera.aspect = aspect; camera.updateProjectionMatrix();
+  const vf = camera.fov * Math.PI / 180, hf = 2 * Math.atan(Math.tan(vf / 2) * aspect), az = M.go - Math.PI / 2 - .4, el = .42, d = (size / 2) / Math.sin(Math.min(vf, hf) / 2) * .92;
+  camera.position.set(c.x + d * Math.cos(el) * Math.cos(az), c.y + d * Math.cos(el) * Math.sin(az), c.z + d * Math.sin(el));
+  controls.target.copy(c); controls.update(); needs = true;
+}
+function applyState() {
+  const st = stepIdx >= 0 ? steps[stepIdx] : null;
+  const done = st ? new Set(steps.slice(0, stepIdx + 1).flatMap(x => x.els)) : null, cur = st ? new Set(st.els) : null;
+  for (const m of SC.mats) m.clippingPlanes = cut ? [SC.plane] : [];
+  for (const m of SC.meshes) {
+    const k = m.userData.key;
+    let v = (m.userData.cap ? cut : true) && (!done || done.has(k) || (st && st.all));
+    m.visible = !!v;
+    if (m.isMesh && !m.userData.line) m.material = (st && (st.all ? (/^e\d/.test(k) && k !== M.hatchE.key) : cur.has(k))) ? (st.all ? SC.coatMat : SC.hiMat) : m.userData.base;
+  }
+  $('#bCut').setAttribute('aria-pressed', cut); $('#bExp').setAttribute('aria-pressed', expTarget > 0); $('#bLbl').setAttribute('aria-pressed', showLbl); $('#bSteps').setAttribute('aria-pressed', stepIdx >= 0);
+  const card = $('#card'); card.hidden = !st;
+  if (st) { $('#cn').textContent = stepIdx + 1; $('#ct').textContent = st.t; $('#cf').textContent = `${st.fc ? st.fc + ' · ' : ''}шаг ${stepIdx + 1} из ${steps.length}`;
+    $('#cu').innerHTML = st.todo.map(t => `<li>${esc(t)}</li>`).join(''); $('#cc').textContent = st.chk ? '✓ ' + st.chk : ''; }
+  needs = true;
+}
+function loop() {
+  requestAnimationFrame(loop);
+  if (Math.abs(expT - expTarget) > .001) { expT += (expTarget - expT) * .14; if (Math.abs(expT - expTarget) < .002) expT = expTarget; KC.explode(SC, expT); needs = true; }
+  if (controls.update()) needs = true;
+  const el = $('#view'), W = el.clientWidth, H = el.clientHeight;
+  if (renderer.domElement.width !== Math.round(W * renderer.getPixelRatio()) || renderer.domElement.height !== Math.round(H * renderer.getPixelRatio())) { renderer.setSize(W, H, false); renderer.domElement.style.width = W + 'px'; renderer.domElement.style.height = H + 'px'; camera.aspect = W / H; camera.updateProjectionMatrix(); needs = true; }
+  if (!needs) return; needs = false;
+  renderer.render(SC.scene, camera);
+  // подписи
+  const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion); const rl = Math.hypot(right.x, right.y) || 1;
+  const st = stepIdx >= 0 ? steps[stepIdx] : null, done = st ? new Set(steps.slice(0, stepIdx + 1).flatMap(x => x.els)) : null;
+  const pos = [];
+  lblEls.forEach(({e, d}, i) => {
+    const vis = showLbl && (!done || done.has(e.key));
+    if (!vis) { d.style.display = 'none'; return; }
+    const r = e.kind === 'ПД' ? 1.0 : e.rout, z = (e.z0 + e.z1) / 2 + expT * .32 * i;
+    const p = new THREE.Vector3(e.cx + right.x / rl * r, e.cy + right.y / rl * r, z).project(camera);
+    if (p.z > 1) { d.style.display = 'none'; return; }
+    d.style.display = ''; pos.push({d, x: (p.x + 1) / 2 * W, y: (1 - p.y) / 2 * H});
+    d.classList.toggle('hi', !!(st && st.els.includes(e.key)));
+  });
+  pos.sort((a, b) => a.y - b.y); let yl = -1e9;
+  for (const q of pos) { const y = Math.max(q.y, yl + 30); yl = y; q.d.style.left = q.x + 'px'; q.d.style.top = y + 'px'; }
+  const card = $('#card'); if (!card.hidden) card.style.bottom = ($('.tools').offsetHeight + 16) + 'px';
+}
+function frame() {
+  $('#bCut').onclick = () => { cut = !cut; applyState(); };
+  $('#bExp').onclick = () => { expTarget = expTarget > 0 ? 0 : 1; applyState(); };
+  $('#bLbl').onclick = () => { showLbl = !showLbl; applyState(); };
+  $('#bReset').onclick = () => resetView();
+  $('#bSteps').onclick = () => { if (stepIdx >= 0) { stepIdx = -1; } else { stepIdx = 0; cut = true; expTarget = 0; } applyState(); };
+  $('#next').onclick = () => { stepIdx = Math.min(steps.length - 1, stepIdx + 1); applyState(); };
+  $('#prev').onclick = () => { stepIdx = Math.max(0, stepIdx - 1); applyState(); };
+  $('#bInfo').onclick = () => $('#panel').classList.toggle('open');
+}
+function buildPanel(w, obj) {
+  const mm = v => Math.round(v * 1000), nR = M.rings.length;
+  const rsum = M.rings.reduce((s, r) => s + (r.z1 - r.z0) + KC.SEAM, 0), gW = M.ztop - M.V;
+  const chips = [`Ø${Math.round(M.D * 1000)}`, `Ду${Math.round(M.Du * 1000)}`, KC.PLACE[M.place] || '', 'люк ' + S(w, 'hatch')].filter(Boolean).map(c => `<span class="chip">${esc(c)}</span>`)
+    .concat(M.per ? [`<span class="chip per">перепадный ${fmt(N(w, 'drop'))} м</span>`] : []).concat(M.seis ? [`<span class="chip ms">сейсмика ${esc(S(w, 'seism'))} б.</span>`] : []);
+  const ringGroups = []; M.rings.slice().reverse().forEach(r => { const g = ringGroups[ringGroups.length - 1]; if (g && g.mark === r.mark) g.n++; else ringGroups.push({mark: r.mark, n: 1, h: r.z1 - r.z0}); });
+  const dimsOf = m => { const d = M.dims[m]; if (!d) return ''; const a = d.din ? `Ø${d.din}/` : ''; const b = /×/.test(d.dout) ? d.dout : (d.din ? d.dout : 'Ø' + d.dout); return `${a}${b}×${d.h}`; };
+  $('#panel').innerHTML = `
+    <div class="chips">${chips.join('')}</div>
+    <dl class="facts"><dt>Глубина до лотка${M.per ? ' выпуска' : ''}</dt><dd>${fmt(N(w, 'H'))} м</dd><dt>Рабочая часть</dt><dd>${fmt(M.V)} м</dd><dt>Горловина с плитой</dt><dd>${fmt(gW)} м</dd>
+      <dt>Верх люка</dt><dd>${sgn(M.ztop - M.zg)} м от земли</dd><dt>Самый тяжёлый</dt><dd>${M.heavy ? esc(M.heavy.mark) + ' · ' + fmt(M.heavy.kg / 1000) + ' т' : '—'}</dd><dt>Масса сборных и люка</dt><dd>${fmt(M.total / 1000)} т</dd></dl>
+    <div><h2>Высоты складываются так</h2><table><tbody>
+      ${ringGroups.map(g => `<tr><td>${esc(g.mark)}${g.n > 1 ? ' ×' + g.n : ''}</td><td class="r">${g.n > 1 ? g.n + ' × ' : ''}(${mm(g.h)} + 10)</td></tr>`).join('')}
+      <tr class="sum"><td>Рабочая часть</td><td class="r ok">${mm(rsum)} мм ✓</td></tr>
+      <tr class="sum"><td>Горловина с плитой и люком</td><td class="r ok">${mm(gW)} мм ✓</td></tr></tbody></table>
+      <div class="note">Шов на растворе — 10 мм. Суммы совпадают с расчётом «Авто Колодцев».</div></div>
+    <div><h2>Элементы</h2><table><thead><tr><th>Марка</th><th>Размеры, мм</th><th class="r">Шт.</th><th class="r">кг</th></tr></thead><tbody>
+      ${M.rows.map(r => `<tr><td>${esc(r.mark)}</td><td>${esc(dimsOf(r.mark))}</td><td class="r">${r.q}</td><td class="r">${Math.round(r.q * r.kg)}</td></tr>`).join('')}</tbody></table></div>
+    ${M.seis ? `<div><h2>Сейсмика: МС</h2><table><tbody>${[['ring', 'Швы колец'], ['pp', 'Под ПП'], ['ppg', 'ПП — горловина'], ['gorl', 'Швы горловины']].map(([k, t]) => { const l = M.seams.filter(s => s.kind === k); return l.length ? `<tr><td>${t}</td><td class="r">${l[0].mark} × ${l[0].n}${l.length > 1 ? ` × ${l.length} шв.` : ''}</td></tr>` : ''; }).join('')}
+      <tr><td>Шов с плитой днища</td><td class="r">обойма — бетон лотка</td></tr></tbody></table></div>` : ''}
+    <div class="msg ${S(w, 'msg') === 'ОК' ? '' : 'bad'}">Проверка расчёта: ${esc(S(w, 'msg'))}</div>
+    <div class="note">Модель построена по данным таблицы «Авто Колодцы», переданным в ссылке. Демонстрационная версия KOLSB.</div>`;
+}
+(async () => {
+  const h = location.hash.slice(1);
+  $('#bDemo').onclick = () => { location.hash = DEMO; location.reload(); };
+  if (!h) { $('#land').hidden = false; return; }
+  try { await start(h); } catch (e) { $('#land').hidden = false; $('#landTxt').innerHTML = `<span class="err">Не удалось прочитать данные колодца из ссылки (${esc(e.message)}).</span> Попробуйте отсканировать QR-код ещё раз.`; console.error(e); }
+})();
+</script>
+</body>
+</html>

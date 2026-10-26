@@ -1,0 +1,529 @@
+/* KOLSB core: модель колодца по строке листа «Экспорт», лоток, разрезы, 3D-сцена (three.js), шаги сборки, упаковка данных для QR.
+   Общий для паспорта (kolsb_passport.html) и 3D-страницы (index.html). Координаты: метры, Z — вверх, z=0 — верх плиты днища. */
+(function (G) {
+'use strict';
+const KC = G.KC = {};
+
+/* ---------------- утилиты ---------------- */
+const num = v => typeof v === 'number' ? v : (v !== undefined && v !== null && v !== '' && !isNaN(parseFloat(String(v).replace(',', '.'))) ? parseFloat(String(v).replace(',', '.')) : 0);
+const N = KC.N = (w, k) => num(w[k]);
+const S = KC.S = (w, k) => (w[k] === undefined || w[k] === null) ? '' : String(w[k]);
+KC.fmt = (x, d = 2) => (x < -0.0005 ? '−' : '') + Math.abs(x).toFixed(d).replace('.', ',');
+KC.sgn = (x, d = 3) => (x > 0.0005 ? '+' : x < -0.0005 ? '−' : '±') + Math.abs(x).toFixed(d).replace('.', ',');
+KC.esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const fmt = KC.fmt, sgn = KC.sgn;
+const dir = t => [Math.cos(t), Math.sin(t)];
+const add = (a, b) => [a[0] + b[0], a[1] + b[1]];
+const mul = (a, k) => [a[0] * k, a[1] * k];
+const dot2 = (a, b) => a[0] * b[0] + a[1] * b[1];
+
+/* ---------------- справочные данные ---------------- */
+KC.PPA = {'ПП10-1': .15, 'ПП10-2': .15, '1ПП15-1': .40, '1ПП15-2': .40, '2ПП15-1': .20, '2ПП15-2': .20, '1ПП20-1': .20, '1ПП20-2': .20, '4ПП20-2': .65};
+// люк: наружный радиус корпуса, квадратный корпус, описание
+KC.HATCH = {'ТМ': [.425, false, 'ТМ (D400) плавающий'], 'Т': [.435, false, 'Т (С250) с шарниром и замком'], 'Т кв.': [.36, true, 'Т (С250) в квадратном корпусе'], 'Л': [.385, false, 'Л (А15) с шарниром и замком']};
+KC.SEAM = 0.01;
+// соединительные элементы, ТПР 902-09-22.84 Альбом VIII, КЖИ 10.0.0 (МС-1…4) и КЖИ 11.0.0 (МС-5…8): B — длина стенки, мм
+KC.MS = {'МС-1': {B: 90, kg: 1.94, asym: false}, 'МС-2': {B: 100, kg: 1.98, asym: false}, 'МС-3': {B: 110, kg: 2.01, asym: false}, 'МС-4': {B: 120, kg: 2.05, asym: false},
+         'МС-5': {B: 90, kg: 1.56, asym: true}, 'МС-6': {B: 100, kg: 1.60, asym: true}, 'МС-7': {B: 110, kg: 1.63, asym: true}, 'МС-8': {B: 120, kg: 1.67, asym: true}};
+KC.OTM_S = 5.338;          // асфальтовая отмостка на 1 люк, м² (спецификация «Авто Колодцев»)
+KC.SHELF_I = 0.02;         // уклон полок к лотку
+KC.PLACE = {'Г': 'газон', 'Т': 'тротуар', 'Д': 'проезжая часть', 'Н': 'незастроенная территория'};
+
+/* ---------------- модель ---------------- */
+KC.model = function (w, angs) {
+  const M = {w, angs};
+  M.D = N(w, 'D'); M.Rin = M.D / 2; M.Rout = N(w, 'Dout') / 2 || M.Rin + .09; M.V = N(w, 'V'); M.hpp = N(w, 'hpp');
+  M.hv = N(w, 'hv'); M.hl = N(w, 'hl'); M.hb = M.hv + M.hl; M.Du = (N(w, 'Du') || 200) / 1000; M.pd6 = N(w, 'pd6') === 1;
+  M.Hl = N(w, 'Hl'); M.per = N(w, 'per') === 1; M.zin = N(w, 'zin'); M.Hst = N(w, 'Hst'); M.pod = N(w, 'pod');
+  M.zg = N(w, 'H1') - M.pod; M.ztop = M.V + N(w, 'Wfact'); M.a = KC.PPA[S(w, 'pp')] ?? .4;
+  M.hat = KC.HATCH[S(w, 'hatch')] || KC.HATCH['Т']; M.go = angs[0]; M.place = S(w, 'mesto') || 'Г';
+  M.gx = M.a * Math.cos(M.go); M.gy = M.a * Math.sin(M.go);
+  M.pnR = (N(w, 'pnD') || M.D + .5) / 2; M.pnH = N(w, 'pnH') || .12;
+  // каталог по строке «Элементы»: марка|код|кол|кг (позиции — по порядку)
+  M.cat = {}; M.rows = [];
+  S(w, 'els').split(';').filter(Boolean).forEach((it, i) => {
+    const [m, c, q, kg] = it.split('|'); const r = {pos: i + 1, mark: m, code: c, q: +q, kg: +kg}; M.rows.push(r); M.cat[m] = r; });
+  M.dims = {};
+  S(w, 'dims').split(';').filter(Boolean).forEach(it => { const [m, a, b, h] = it.split('|'); M.dims[m] = {din: a, dout: b, h: +h}; });
+  const pos = m => (M.cat[m] || {}).pos || '';
+  const els = []; let z = 0;
+  const addE = o => { o.id = els.length; o.key = 'e' + o.id; o.pos = pos(o.mark); els.push(o); return o; };
+  addE({kind: 'ПН', mark: S(w, 'pn'), z0: -M.pnH, z1: 0, rin: 0, rout: M.pnR, cx: 0, cy: 0});
+  const rings = [];
+  for (let i = 0; i < N(w, 'n9'); i++) rings.push([S(w, 'ring9'), N(w, 'h9')]);
+  for (let i = 0; i < N(w, 'n6'); i++) rings.push([S(w, 'ring6'), N(w, 'h6')]);
+  M.rings = [];
+  rings.forEach(([m, h], i) => { M.rings.push(addE({kind: 'КС', mark: m, z0: z, z1: z + h, rin: M.Rin, rout: M.Rout, cx: 0, cy: 0, first: i === 0, idx: i})); z += h + KC.SEAM; });
+  M.ppE = addE({kind: 'ПП', mark: S(w, 'pp'), z0: M.V, z1: M.V + M.hpp, rin: 0, rout: M.Rout, cx: 0, cy: 0});
+  z = M.V + M.hpp + KC.SEAM;
+  M.gorl = [];
+  for (let i = 0; i < N(w, 'n76'); i++) { M.gorl.push(addE({kind: 'КГ', mark: 'КС7.6', z0: z, z1: z + .59, rin: .35, rout: .42, cx: M.gx, cy: M.gy})); z += .6; }
+  for (let i = 0; i < N(w, 'n73'); i++) { M.gorl.push(addE({kind: 'КГ', mark: 'КС7.3', z0: z, z1: z + .29, rin: .35, rout: .42, cx: M.gx, cy: M.gy})); z += .3; }
+  const nko = N(w, 'nKO');
+  if (nko > 0) { M.koE = addE({kind: 'КО', mark: 'КО6', q: nko, z0: z, z1: z + nko * .08 - KC.SEAM, rin: .29, rout: .42, cx: M.gx, cy: M.gy}); z += nko * .08; }
+  if (M.pd6) M.pdE = addE({kind: 'ПД', mark: 'ПД6', z0: z, z1: z + .22, rin: .29, rout: 1.25, cx: M.gx, cy: M.gy});
+  M.hatchE = addE({kind: 'ЛЮК', mark: 'Люк ' + S(w, 'hatch'), z0: M.ztop - M.Hl, z1: M.ztop, rin: .31, rout: M.hat[0], cx: M.gx, cy: M.gy});
+  M.els = els;
+  // стенка-растекатель (перепадные): снизу вверх
+  M.wall = [];
+  if (M.per && M.Hst > 0 && S(w, 'wall')) {
+    let zz = 0; S(w, 'wall').split(';').forEach((p, i) => { const [m, mm] = p.split('|'); const h = +mm / 1000; M.wall.push({mark: m, z0: zz, z1: zz + h, pos: pos(m), key: 'w' + i}); zz += h; }); }
+  M.tw = .1; M.dw = M.Rin - (M.D >= 2 ? .5 : .35); M.bw = M.D >= 2 ? 1.6 : 1.2;
+  // скобы
+  M.steps = [];
+  for (let k = 0; k < N(w, 'sk'); k++) { const zz = M.ztop - .42 - k * .3; if (zz < .35) break; M.steps.push(zz); }
+  // трубы: первая — выпуск; у перепадного вторая — перепадный вход
+  M.pipes = angs.map((t, i) => ({ang: t, role: i === 0 ? 'выпуск' : 'вход', z: (M.per && i === 1) ? M.zin : M.hv, drop: M.per && i === 1, key: 'pipe'}));
+  M.heavy = M.rows.filter(r => !/^Люк/.test(r.mark)).reduce((a, r) => (!a || r.kg > a.kg) ? r : a, null);
+  M.total = M.rows.reduce((s, r) => s + r.q * r.kg, 0);
+  buildSeams(M);
+  buildLotok(M);
+  M.otmR = Math.sqrt(KC.OTM_S / Math.PI + M.hat[0] * M.hat[0]);
+  M.surfR = M.place === 'Д' && M.pd6 ? 1.75 : Math.max(M.otmR + .35, 1.5);
+  return M;
+};
+KC.stepRadius = function (M, z) {
+  for (const e of M.els) if ((e.kind === 'КГ' || e.kind === 'КО') && z >= e.z0 - .005 && z <= e.z1 + .005) return M.a + e.rin;
+  return z > M.V + M.hpp ? M.a + .35 : M.Rin;
+};
+
+/* ---------------- сейсмика: швы и МС ----------------
+   По ТПР 902-09-22.84 Альбом VIII (лист АС-5): МС на каждом шве колец рабочей части, под плитой перекрытия, на стыке ПП с горловиной,
+   на швах горловины. Шов «плита днища — нижнее кольцо» — без МС: обойма из бетона (у нас бетон лотка), по ТПР 901-09-11.84 Альбом VI.88 (АС-3 п.2, АС-5). */
+function buildSeams(M) {
+  const w = M.w; M.k = N(w, 'msk'); M.seis = M.k > 0; M.seams = [];
+  if (!M.seis) return;
+  const S2 = KC.SEAM / 2, k = M.k;
+  const ringMark = M.D >= 2 ? 'МС-4' : M.D >= 1.5 ? 'МС-3' : 'МС-2', ppMark = M.D >= 2 ? 'МС-8' : M.D >= 1.5 ? 'МС-7' : 'МС-6';
+  const around = (n, off) => Array.from({length: n}, (_, j) => M.go + off + j * 2 * Math.PI / n);
+  M.rings.forEach((r, i) => {
+    if (i < M.rings.length - 1) M.seams.push({kind: 'ring', z: r.z1 + S2, mark: ringMark, n: k, cx: 0, cy: 0, rin: M.Rin, rout: M.Rout, angs: around(k, Math.PI / k), asym: false, below: r, above: M.rings[i + 1]});
+  });
+  const last = M.rings[M.rings.length - 1];
+  if (last) M.seams.push({kind: 'pp', z: last.z1 + S2, mark: ppMark, n: k, cx: 0, cy: 0, rin: M.Rin, rout: M.Rout, angs: around(k, Math.PI / k), asym: true, longOut: true, below: last, above: M.ppE});
+  const g0 = M.gorl[0] || M.koE;
+  if (g0) M.seams.push({kind: 'ppg', z: M.V + M.hpp + S2, mark: 'МС-5', n: 4, cx: M.gx, cy: M.gy, rin: .35, rout: .42, angs: around(4, Math.PI / 4), asym: true, longOut: false, below: M.ppE, above: g0});
+  let j = 0;
+  M.gorl.forEach(g => { M.seams.push({kind: 'gorl', z: g.z1 + S2, mark: 'МС-1', n: 4, cx: M.gx, cy: M.gy, rin: .35, rout: .42, angs: around(4, Math.PI / 4 + (j++ % 2) * Math.PI / 8), asym: false, below: g}); });
+  if (M.koE) for (let i = 0; i < M.koE.q; i++) M.seams.push({kind: 'gorl', z: M.koE.z0 + i * .08 + .07 + S2, mark: 'МС-1', n: 4, cx: M.gx, cy: M.gy, rin: .29, rout: .42, angs: around(4, Math.PI / 4 + (j++ % 2) * Math.PI / 8), asym: false, below: M.koE});
+  M.seams.forEach((s, i) => { s.key = 'ms' + i; });
+}
+
+/* ---------------- лоток ----------------
+   Канал: низ — полукруг Ду, выше — вертикальные стенки до полки (hл из таблицы); полки с уклоном 0,02 к каналу;
+   повороты и боковые входы — плавной кривой к выпуску (СП 32.13330.2012 п.6.2.1, 6.3.3; ТПР 902-09-22.84 Альбом II, лист АС-3). */
+function bez(p0, p1, p2, p3, n = 48) {
+  const pts = [];
+  for (let i = 0; i <= n; i++) { const t = i / n, u = 1 - t;
+    pts.push([u * u * u * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t * t * t * p3[0], u * u * u * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t * t * t * p3[1]]); }
+  return pts;
+}
+function distPoly(pts, x, y) {
+  let best = 1e9;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const ax = pts[i][0], ay = pts[i][1], bx = pts[i + 1][0], by = pts[i + 1][1], dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy;
+    let t = L > 0 ? ((x - ax) * dx + (y - ay) * dy) / L : 0; t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const ex = ax + t * dx - x, ey = ay + t * dy - y, d = ex * ex + ey * ey; if (d < best) best = d;
+  }
+  return Math.sqrt(best);
+}
+function buildLotok(M) {
+  const R = M.Rin, w = M.Du / 2, k = .55 * R, o = M.pipes[0], uo = dir(o.ang), Po = mul(uo, R + .06), ch = [];
+  M.pipes.forEach((p, i) => {
+    if (i === 0 || p.drop) return;
+    const ui = dir(p.ang), Pi = mul(ui, R + .06);
+    ch.push({pts: bez(Pi, add(Pi, mul(ui, -k - .06)), add(Po, mul(uo, -k - .06)), Po), from: i});
+  });
+  M.hasWall = M.per && M.wall.length > 0 && M.pipes[1];
+  if (M.hasWall) {
+    const ui = dir(M.pipes[1].ang), Q = mul(ui, M.dw - M.tw);
+    ch.push({pts: bez(Q, add(Q, mul(ui, -k * .5)), add(Po, mul(uo, -k)), Po), from: 1, wall: true});
+  }
+  if (!ch.length) { const Q = mul(uo, -R * .35); ch.push({pts: [Q, Po], from: -1}); }
+  M.ch = ch; M.chW = w; M.uin = M.hasWall ? dir(M.pipes[1].ang) : null;
+}
+// расстояние до ближайшего канала
+KC.chDist = function (M, x, y) { let d = 1e9; for (const c of M.ch) { const v = distPoly(c.pts, x, y); if (v < d) d = v; } return d; };
+// приямок за стенкой (перепадные): >0 — за стенкой
+KC.behindWall = (M, x, y) => M.hasWall ? (x * M.uin[0] + y * M.uin[1]) - M.dw : -1;
+// отметка поверхности лотка
+KC.lotZ = function (M, x, y) {
+  if (M.hasWall && KC.behindWall(M, x, y) > -M.tw) return KC.behindWall(M, x, y) > 0 ? 0 : M.hb;
+  const w = M.chW, d = KC.chDist(M, x, y);
+  if (d < w) return M.hv + w - Math.sqrt(w * w - d * d);
+  return M.hb + KC.SHELF_I * (d - w);
+};
+
+/* marching squares: заполнение области f>0 (треугольники) и линии f=0 (отрезки) */
+KC.marchFill = function (f, x0, y0, x1, y1, h) {
+  const nx = Math.ceil((x1 - x0) / h), ny = Math.ceil((y1 - y0) / h), V = new Float64Array((nx + 1) * (ny + 1));
+  for (let j = 0; j <= ny; j++) for (let i = 0; i <= nx; i++) V[j * (nx + 1) + i] = f(x0 + i * h, y0 + j * h);
+  const tris = [], segs = [];
+  const P = (i, j) => [x0 + i * h, y0 + j * h];
+  const lerp = (a, b, fa, fb) => { const t = fa / (fa - fb); return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]; };
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const c = [P(i, j), P(i + 1, j), P(i + 1, j + 1), P(i, j + 1)];
+    const v = [V[j * (nx + 1) + i], V[j * (nx + 1) + i + 1], V[(j + 1) * (nx + 1) + i + 1], V[(j + 1) * (nx + 1) + i]];
+    const ins = v.map(x => x > 0);
+    if (ins.every(x => x)) { tris.push(c[0], c[1], c[2], c[0], c[2], c[3]); continue; }
+    if (!ins.some(x => x)) continue;
+    const poly = [], cut = [];
+    for (let q = 0; q < 4; q++) { const a = q, b = (q + 1) % 4;
+      if (ins[a]) poly.push(c[a]);
+      if (ins[a] !== ins[b]) { const p = lerp(c[a], c[b], v[a], v[b]); poly.push(p); cut.push(p); } }
+    for (let q = 1; q < poly.length - 1; q++) tris.push(poly[0], poly[q], poly[q + 1]);
+    for (let q = 0; q + 1 < cut.length; q += 2) segs.push([cut[q], cut[q + 1]]);
+  }
+  return {tris, segs};
+};
+
+/* ---------------- разрез вертикальной плоскостью через ось колодца ----------------
+   phi — направление оси разреза в плане; s — координата вдоль оси; видимая половина — слева от оси (n = (−sin φ, cos φ)). */
+function lineCircle(cx, cy, r, phi) {
+  const ux = Math.cos(phi), uy = Math.sin(phi), sc = cx * ux + cy * uy, dc = -cx * uy + cy * ux;
+  if (Math.abs(dc) >= r) return null; const h = Math.sqrt(r * r - dc * dc); return [sc - h, sc + h];
+}
+function minus(iv, hole) { // [a,b] минус [c,d]
+  if (!hole || hole[1] <= iv[0] || hole[0] >= iv[1]) return [iv];
+  const out = []; if (hole[0] > iv[0]) out.push([iv[0], hole[0]]); if (hole[1] < iv[1]) out.push([hole[1], iv[1]]); return out;
+}
+function lineBox(cx, cy, hx, hy, rot, phi) { // прямоугольник 2hx×2hy, повёрнут на rot
+  const ux = Math.cos(phi), uy = Math.sin(phi), c = Math.cos(-rot), s = Math.sin(-rot);
+  const ox = -cx, oy = -cy, lox = ox * c - oy * s, loy = ox * s + oy * c, ldx = ux * c - uy * s, ldy = ux * s + uy * c;
+  let t0 = -1e9, t1 = 1e9;
+  for (const [o, d, hh] of [[lox, ldx, hx], [loy, ldy, hy]]) {
+    if (Math.abs(d) < 1e-12) { if (Math.abs(o) > hh) return null; continue; }
+    let a = (-hh - o) / d, b = (hh - o) / d; if (a > b) [a, b] = [b, a]; t0 = Math.max(t0, a); t1 = Math.min(t1, b); }
+  return t0 < t1 ? [t0, t1] : null;
+}
+KC.cutParts = function (M, phi) {
+  const out = [], view = [];
+  const ann = (e, z0, z1, rin, rout, key, cls) => {
+    const o = lineCircle(e.cx, e.cy, rout, phi);
+    if (!o) { const sc = e.cx * Math.cos(phi) + e.cy * Math.sin(phi); view.push({s0: sc - rout, s1: sc + rout, z0, z1, key}); return; }
+    const i = rin > 0 ? lineCircle(e.cx, e.cy, rin, phi) : null;
+    for (const iv of minus(o, i)) out.push({s0: iv[0], s1: iv[1], z0, z1, key, cls});
+  };
+  for (const e of M.els) {
+    if (e.kind === 'ПН') ann(e, e.z0, e.z1, 0, e.rout, e.key, 'conc');
+    else if (e.kind === 'КС' || e.kind === 'КГ') ann(e, e.z0, e.z1, e.rin, e.rout, e.key, 'conc');
+    else if (e.kind === 'КО') for (let i = 0; i < e.q; i++) ann(e, e.z0 + i * .08, e.z0 + i * .08 + .07, e.rin, e.rout, e.key, 'conc');
+    else if (e.kind === 'ПП') { const o = lineCircle(0, 0, e.rout, phi), h = lineCircle(M.gx, M.gy, .35, phi); if (o) for (const iv of minus(o, h)) out.push({s0: iv[0], s1: iv[1], z0: e.z0, z1: e.z1, key: e.key, cls: 'conc'}); }
+    else if (e.kind === 'ПД') {
+      const b = lineBox(M.gx, M.gy, 1.25, .875, M.go, phi);
+      if (b) { for (const [r, z0, z1] of [[.29, e.z0, e.z0 + .11], [.47, e.z0 + .11, e.z1]]) for (const iv of minus(b, lineCircle(M.gx, M.gy, r, phi))) out.push({s0: iv[0], s1: iv[1], z0, z1, key: e.key, cls: 'conc'}); }
+      else { const sc = M.gx * Math.cos(phi) + M.gy * Math.sin(phi); view.push({s0: sc - 1.25, s1: sc + 1.25, z0: e.z0, z1: e.z1, key: e.key}); }
+    } else if (e.kind === 'ЛЮК') {
+      if (M.hat[1]) { const b = lineBox(M.gx, M.gy, .36, .36, M.go, phi); if (b) for (const iv of minus(b, lineCircle(M.gx, M.gy, .31, phi))) out.push({s0: iv[0], s1: iv[1], z0: e.z0, z1: e.z1, key: e.key, cls: 'iron'}); }
+      else ann(e, e.z0, e.z1, e.rin, e.rout, e.key, 'iron');
+      const lid = lineCircle(M.gx, M.gy, .305, phi); if (lid) out.push({s0: lid[0], s1: lid[1], z0: e.z1 - .035, z1: e.z1 - .005, key: e.key, cls: 'iron'});
+    }
+  }
+  return {out, view};
+};
+// профиль лотка вдоль линии разреза (от стенки до стенки)
+KC.lotProfile = function (M, phi, step = .004) {
+  const ux = Math.cos(phi), uy = Math.sin(phi), pts = [];
+  for (let s = -M.Rin; s <= M.Rin + 1e-9; s += step) pts.push([s, KC.lotZ(M, s * ux, s * uy)]);
+  return pts;
+};
+
+/* ---------------- шаги сборки ---------------- */
+KC.stepsOf = function (M) {
+  const w = M.w, out = [], k = M.k, seis = M.seis;
+  const kgs = m => M.cat[m] ? `${M.cat[m].code !== '-' ? M.cat[m].code + ' · ' : ''}${fmt(M.cat[m].kg / 1000, 2)} т` : '';
+  const H = z => sgn(z - M.zg);
+  const seamOf = (kind, el) => M.seams.filter(s => s.kind === kind && (s.above === el || (kind === 'gorl' && s.below === el)));
+  const msTxt = s => `${s.mark} — ${s.n} шт. через ${Math.round(360 / s.n)}°`;
+  const lastRing = M.rings[M.rings.length - 1];
+  for (const e of M.els) {
+    const base = {els: [e.key], fc: kgs(e.mark), kind: e.kind};
+    if (e.kind === 'ПН') out.push({...base, t: `Плита днища ${e.mark}`, todo: ['Уложить на подготовленное основание строго горизонтально.', `Верх плиты — ${H(0)} м от земли: от него считаются все высоты.`], chk: 'Горизонтальность плиты.'});
+    else if (e.kind === 'КС') {
+      const nLow = M.pipes.filter(p => !p.drop).length;
+      const hasIn = M.per && M.pipes[1] && M.zin >= e.z0 - .005 && M.zin < e.z1 + KC.SEAM;
+      const sm = seamOf('ring', e)[0];
+      const els2 = sm ? [e.key, sm.key] : [e.key];
+      let todo;
+      if (e.first) todo = ['На раствор М100, шов 10 мм.', hasIn ? `Проёмы у дна — ${nLow} шт.; перепадный вход — лоток ${H(M.zin)} м.` : `Проёмы под трубы — ${nLow} шт., по направлениям с плана.`, 'В этом кольце бетонируется лоток.'];
+      else if (sm) todo = [`На верх нижнего кольца надеть ${msTxt(sm)}: полки охватывают стенку, стенка МС — в шве.`, 'Раствор М100, шов 10 мм; кольцо; стык — лента ППЭ.', hasIn ? `Проём под перепадный вход: лоток ${H(M.zin)} м.` : `Верх кольца — ${H(e.z1)} м.`];
+      else todo = ['На раствор М100, шов 10 мм.', 'Стык обмотать лентой ППЭ 15 мм.', hasIn ? `Проём под перепадный вход: лоток ${H(M.zin)} м.` : `Верх кольца — ${H(e.z1)} м.`];
+      out.push({...base, els: els2, t: `Кольцо ${e.mark}${e.first ? ' — нижнее' : ''}`, todo,
+        chk: e.first && seis ? 'Шов с плитой — без МС: обойму даёт бетон лотка.' : 'Вертикальность, совпадение швов.'});
+    } else if (e.kind === 'ПП') {
+      const sm = seamOf('pp', e)[0];
+      out.push({...base, els: sm ? [e.key, sm.key] : [e.key], t: `Плита перекрытия ${e.mark}`,
+        todo: (sm ? [`На верх кольца — ${msTxt(sm)} (длинная полка снаружи).`] : ['На раствор М100, стык — лента ППЭ.']).concat(['Лаз Ø700 — у стенки, над ходовыми скобами.', `Верх плиты — ${H(e.z1)} м от земли.`]),
+        chk: sm ? `В спецификации ${sm.mark} — ${2 * sm.n} шт.: ${sm.n} шт. запас.` : 'Лаз над скобами.'});
+    } else if (e.kind === 'КГ' || e.kind === 'КО') {
+      const first = (M.gorl[0] || M.koE) === e, sp = first ? seamOf('ppg', e)[0] : null, sg = M.seams.filter(s => s.kind === 'gorl' && s.below === e);
+      const els2 = [e.key].concat(sp ? [sp.key] : [], sg.map(s => s.key));
+      const lines = [];
+      if (sp) lines.push(`На стыке с ПП — ${msTxt(sp)} (длинная полка внутрь, по краю лаза).`);
+      if (e.kind === 'КО') lines.push('Добор горловины до отметки люка; каждое кольцо — на раствор.', 'Количество округлено вверх: люк чуть выше, а не ниже.');
+      else lines.push('На раствор М100, соосно лазу; стык — лента ППЭ.');
+      if (sg.length) lines.push(`На каждый шов сверху — ${sg[0].mark} по 4 шт. (${sg.length} шв.).`);
+      else if (e.kind === 'КГ') lines.push('Высокие кольца ставятся первыми.');
+      out.push({...base, els: els2, t: e.kind === 'КО' ? `Кольца опорные КО6${e.q > 1 ? ' ×' + e.q : ''}` : `Кольцо горловины ${e.mark}`,
+        fc: e.kind === 'КО' ? kgs('КО6') + (e.q > 1 ? ` · ${e.q} шт.` : '') : kgs(e.mark), todo: lines.slice(0, 3), chk: e.kind === 'КО' ? 'Отметка под люк.' : 'Соосность с лазом.'});
+    } else if (e.kind === 'ПД') out.push({...base, t: 'Плита дорожная ПД6', todo: ['Укладывается вокруг горловины на дороге.', 'Люк садится в нишу плиты Ø940.'], chk: 'Люк выступает над ПД6 на 70 мм — под слой покрытия.'});
+    else if (e.kind === 'ЛЮК') {
+      const sur = M.place === 'Д' ? 'Покрытие дороги — вровень с люком.' : M.place === 'Т' ? 'Плитка тротуара вокруг люка.' : `Асфальтовая отмостка вокруг люка, ≈Ø${fmt(2 * M.otmR, 1)} м.`;
+      out.push({...base, els: [e.key, 'surf'], t: `Люк ${S(w, 'hatch')}`, fc: `${M.cat[e.mark] ? M.cat[e.mark].code + ' · ' + M.cat[e.mark].kg + ' кг' : ''}`,
+        todo: [`${M.hat[2]}.`, `Верх люка — ${H(M.ztop)} м от земли.`, sur], chk: N(w, 'over') > 0 ? `Выше расчётной отметки на ${N(w, 'over')} мм — за счёт округления КО6.` : 'Отметка люка.'});
+    }
+    if (e === lastRing) {
+      out.push({els: ['pipe'], t: `Трубы Ду${Math.round(M.Du * 1000)}`, fc: `заделка — бетон В15, ${fmt(N(w, 'zad'))} м³`,
+        todo: [M.per ? `Выпуск${M.pipes.length > 2 ? ' и боковые входы' : ''} — на отметке лотка, перепадный вход — на ${fmt(N(w, 'drop'))} м выше, за стенкой.` : `${M.pipes.length > 2 ? `Выпуск и ${M.pipes.length - 1} входа` : 'Выпуск и вход'} — на отметке лотка.`, 'Заделать проёмы бетоном В15.'], chk: 'Уклоны и отметки лотков труб.'});
+      out.push({els: ['lot'], t: M.per ? 'Лоток и водобой' : 'Лоток', fc: `бетон В15 · ${fmt(N(w, 'lot'))} м³`,
+        todo: ['Канал: низ — полукруг Ду, выше вертикальные стенки; затирка и железнение.', `Полки на ${fmt(M.hl)} м над лотком, уклон 0,02 к каналу; повороты — плавной кривой.`,
+               seis ? 'Бетон лотка у стенки — обойма нижнего кольца (вместо МС).' : (M.per ? (M.hv > .001 ? `Приямок водобоя на ${fmt(M.hv)} м ниже лотка выпуска, на дне — стальной лист.` : 'За стенкой на днище — стальной лист водобоя.') : 'Лоток без уступов, гладкий.')],
+        chk: 'Канал без уступов, гладкий.'});
+      M.wall.forEach((p, i) => out.push({els: [p.key].concat(i === 0 ? ['wall0'] : []), t: `Стенка-растекатель ${p.mark}`, fc: `${M.cat[p.mark] ? M.cat[p.mark].kg + ' кг · ' : ''}т.пр. 902-09-22.84`,
+        todo: [/СР-11/.test(p.mark) ? 'Нижняя панель, вырезом вниз — проток в лоток.' : /СР-12/.test(p.mark) ? 'Верхняя панель — ставится последней.' : 'Средняя панель.', 'Крепление к кольцам — по Альбому VI этой т.пр.'],
+        chk: i === M.wall.length - 1 ? `Вход на ${fmt(M.Hst - M.zin)} м ниже верха стенки.` : 'Панель в плоскости стенки.'}));
+    }
+  }
+  out.push({els: ['sk'], t: 'Скобы ходовые', fc: `217-110-0103 · ${N(w, 'sk')} шт.`, todo: ['По одной вертикали под лазом, шаг 300 мм.', 'Верхняя — у люка, нижняя — над лотком.'], chk: 'Крепление каждой скобы.'});
+  out.push({els: [], all: true, t: 'Гидроизоляция', fc: `внутр. + наруж. · ${fmt(N(w, 'gidro'))} м² (справочно)`, todo: ['Обработать внутренние и наружные поверхности колодца.', 'Выполняется всегда, по проекту.'], chk: 'Перед засыпкой — сплошное покрытие.'});
+  return out;
+};
+
+/* ---------------- упаковка данных колодца в ссылку (для QR) ---------------- */
+KC.PACK_KEYS = ['nom', 'per', 'mark', 'H', 'D', 'Du', 'drop', 'mesto', 'hatch', 'placeName', 'Hl', 'pod', 'pd6', 'hl', 'hv', 'H1', 'V', 'Wfact', 'over', 'ppd', 'hpp',
+  'pn', 'ring9', 'ring6', 'n9', 'n6', 'pp', 'n76', 'n73', 'nKO', 'sk', 'zad', 'lot', 'gidro', 'Dout', 'pnD', 'pnH', 'h9', 'h6', 'Hst', 'zin', 'wall', 'els', 'dims', 'seism', 'msk', 'msg'];
+const b64u = {
+  enc: u8 => { let s = ''; for (let i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); },
+  dec: s => { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
+};
+async function zip(u8, mode) {
+  const cs = mode === 'c' ? new CompressionStream('deflate-raw') : new DecompressionStream('deflate-raw');
+  return new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(cs)).arrayBuffer());
+}
+KC.pack = async function (w, angsDeg, obj) {
+  const arr = KC.PACK_KEYS.map(k => { const v = w[k]; if (typeof v === 'number') return Math.round(v * 1000) / 1000; return v === undefined || v === null ? '' : v; });
+  // в els коды АГСК не нужны для 3D — короче ссылка
+  const ie = KC.PACK_KEYS.indexOf('els'); arr[ie] = String(arr[ie]).split(';').map(x => { const p = x.split('|'); return [p[0], p[2], p[3]].join('|'); }).join(';');
+  const json = JSON.stringify({v: 1, a: angsDeg, o: obj || '', d: arr});
+  return 'k1' + b64u.enc(await zip(new TextEncoder().encode(json), 'c'));
+};
+KC.unpack = async function (s) {
+  if (!s || s.slice(0, 2) !== 'k1') throw new Error('нет данных колодца');
+  const j = JSON.parse(new TextDecoder().decode(await zip(b64u.dec(s.slice(2)), 'd')));
+  const w = {}; KC.PACK_KEYS.forEach((k, i) => { w[k] = j.d[i]; });
+  w.els = String(w.els).split(';').filter(Boolean).map(x => { const p = x.split('|'); return [p[0], '-', p[1], p[2]].join('|'); }).join(';');
+  w.msk = num(w.msk);
+  return {w, angsDeg: j.a, obj: j.o};
+};
+
+/* ---------------- 3D-сцена (three.js) ---------------- */
+KC.COL = {ring: 0xc9c5bb, ring2: 0xbfbbb0, plate: 0xaaa69c, gorl: 0xd5cfc2, ko: 0xe0dacc, lot: 0xbdb8ad, chan: 0x7f95a4, pipe: 0xd0712f, pipeIn: 0x9c4f1d,
+  iron: 0x34383d, lid: 0x4e555c, step: 0xd9a21b, wall: 0x8d77bd, steel: 0x4a5560, ms: 0x2f6f9f, hi: 0xf2a516, coat: 0x5f93cf, cap: 0xe9e4d8,
+  grass: 0x76a650, soil: 0x9a7b5a, asph: 0x3f4348, gravel: 0x9d978c, tile: 0xb8b1a5, sand: 0xd9c9a3, edge: 0x4a4a4a};
+KC.buildScene = function (M, THREE) {
+  const C = KC.COL, scene = new THREE.Scene(), meshes = [], mats = new Map();
+  const mat = (col, o = {}) => { const key = col + JSON.stringify(o); if (!mats.has(key)) mats.set(key, new THREE.MeshStandardMaterial(Object.assign({color: col, roughness: .88, metalness: 0, side: THREE.DoubleSide}, o))); return mats.get(key); };
+  const edgeMat = new THREE.LineBasicMaterial({color: C.edge, transparent: true, opacity: .35});
+  const order = new Map(); // ключ -> индекс этажа (для разнесённого вида)
+  const put = (geo, col, key, opt = {}) => {
+    const m = new THREE.Mesh(geo, opt.mat || mat(col, opt.m || {})); m.userData = {key, cap: !!opt.cap, lvl: opt.lvl ?? 0, base: m.material};
+    if (opt.pos) m.position.set(...opt.pos); if (opt.rotz) m.rotation.z = opt.rotz;
+    scene.add(m); meshes.push(m);
+    if (opt.edges) { const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 30), edgeMat); e.userData = {key, line: true, lvl: opt.lvl ?? 0, cap: false}; if (opt.pos) e.position.set(...opt.pos); if (opt.rotz) e.rotation.z = opt.rotz; scene.add(e); meshes.push(e); }
+    return m;
+  };
+  const ringGeo = (rin, rout, h, seg = 72) => {
+    const sh = new THREE.Shape(); sh.absarc(0, 0, rout, 0, Math.PI * 2, false);
+    if (rin > 0) { const hole = new THREE.Path(); hole.absarc(0, 0, rin, 0, Math.PI * 2, true); sh.holes.push(hole); }
+    return new THREE.ExtrudeGeometry(sh, {depth: h, bevelEnabled: false, curveSegments: seg});
+  };
+  const shapeGeo = (shape, h, seg = 64) => new THREE.ExtrudeGeometry(shape, {depth: h, bevelEnabled: false, curveSegments: seg});
+  // уровни для разнесённого вида: по порядку элементов снизу вверх
+  M.els.forEach((e, i) => order.set(e.key, i));
+  const lvlAt = z => { let L = 0; M.els.forEach((e, i) => { if (z >= e.z0 - .02) L = i; }); return L; };
+  let ri = 0;
+  for (const e of M.els) {
+    const L = order.get(e.key);
+    if (e.kind === 'ПН') put(new THREE.CylinderGeometry(e.rout, e.rout, e.z1 - e.z0, 96).rotateX(Math.PI / 2).translate(0, 0, (e.z0 + e.z1) / 2), C.plate, e.key, {lvl: L, edges: true});
+    else if (e.kind === 'КС') put(ringGeo(e.rin, e.rout, e.z1 - e.z0, 96), (ri++ % 2) ? C.ring2 : C.ring, e.key, {pos: [0, 0, e.z0], lvl: L, edges: true});
+    else if (e.kind === 'КГ') put(ringGeo(e.rin, e.rout, e.z1 - e.z0), C.gorl, e.key, {pos: [e.cx, e.cy, e.z0], lvl: L, edges: true});
+    else if (e.kind === 'КО') for (let i = 0; i < e.q; i++) put(ringGeo(e.rin, e.rout, .07), i % 2 ? C.gorl : C.ko, e.key, {pos: [e.cx, e.cy, e.z0 + i * .08], lvl: L, edges: true});
+    else if (e.kind === 'ПП') {
+      const sh = new THREE.Shape(); sh.absarc(0, 0, e.rout, 0, Math.PI * 2, false);
+      const hole = new THREE.Path(); hole.absarc(M.gx, M.gy, .35, 0, Math.PI * 2, true); sh.holes.push(hole);
+      put(shapeGeo(sh, e.z1 - e.z0, 96), C.plate, e.key, {pos: [0, 0, e.z0], lvl: L, edges: true});
+    } else if (e.kind === 'ПД') {
+      for (const [r, z0, h] of [[.29, e.z0, .11], [.47, e.z0 + .11, .11]]) {
+        const sh = new THREE.Shape(); sh.moveTo(-1.25, -.875); sh.lineTo(1.25, -.875); sh.lineTo(1.25, .875); sh.lineTo(-1.25, .875); sh.lineTo(-1.25, -.875);
+        const hole = new THREE.Path(); hole.absarc(0, 0, r, 0, Math.PI * 2, true); sh.holes.push(hole);
+        put(shapeGeo(sh, h), C.plate, e.key, {pos: [e.cx, e.cy, z0], rotz: M.go, lvl: L, edges: true});
+      }
+    } else if (e.kind === 'ЛЮК') {
+      if (M.hat[1]) { const sh = new THREE.Shape(); sh.moveTo(-.36, -.36); sh.lineTo(.36, -.36); sh.lineTo(.36, .36); sh.lineTo(-.36, .36); sh.lineTo(-.36, -.36);
+        const hole = new THREE.Path(); hole.absarc(0, 0, .31, 0, Math.PI * 2, true); sh.holes.push(hole); put(shapeGeo(sh, e.z1 - e.z0), C.iron, e.key, {pos: [e.cx, e.cy, e.z0], rotz: M.go, lvl: L, m: {roughness: .6, metalness: .3}}); }
+      else put(ringGeo(e.rin, e.rout, e.z1 - e.z0), C.iron, e.key, {pos: [e.cx, e.cy, e.z0], lvl: L, m: {roughness: .6, metalness: .3}});
+      put(new THREE.CylinderGeometry(.305, .305, .03, 64).rotateX(Math.PI / 2), C.lid, e.key, {pos: [e.cx, e.cy, e.z1 - .02], lvl: L, m: {roughness: .55, metalness: .35}});
+      for (let r = .08; r < .3; r += .07) put(new THREE.TorusGeometry(r, .006, 6, 64), C.iron, e.key, {pos: [e.cx, e.cy, e.z1 - .004], lvl: L});
+    }
+  }
+  const L0 = order.get(M.rings[0] ? M.rings[0].key : M.els[0].key);
+  // трубы
+  M.pipes.forEach(p => {
+    const ro = M.Du * .54, ri2 = M.Du / 2, len = M.Rout + .9 - (M.Rin - .04);
+    const g = new THREE.CylinderGeometry(ro, ro, len, 40, 1, true).rotateZ(Math.PI / 2).translate(M.Rin - .04 + len / 2, 0, 0);
+    const gi = new THREE.CylinderGeometry(ri2, ri2, len, 40, 1, true).rotateZ(Math.PI / 2).translate(M.Rin - .04 + len / 2, 0, 0);
+    const ringEnd = new THREE.RingGeometry(ri2, ro, 40).rotateY(Math.PI / 2).translate(M.Rin - .04, 0, 0);
+    const ringEnd2 = new THREE.RingGeometry(ri2, ro, 40).rotateY(Math.PI / 2).translate(M.Rout + .9, 0, 0);
+    const L = lvlAt(p.z);
+    for (const [geo, col] of [[g, C.pipe], [gi, C.pipeIn], [ringEnd, C.pipe], [ringEnd2, C.pipe]]) put(geo, col, 'pipe', {pos: [0, 0, p.z + ri2], rotz: p.ang, lvl: L});
+    // заделка снаружи кольца — бетонный воротник
+    put(new THREE.CylinderGeometry(ro + .05, ro + .05, .08, 40, 1, true).rotateZ(Math.PI / 2).translate(M.Rout + .04, 0, 0), C.ring2, 'pipe', {pos: [0, 0, p.z + ri2], rotz: p.ang, lvl: L});
+  });
+  // лоток: полки (заполнение marching squares) + каналы (развёртка профиля вдоль кривой)
+  {
+    const R = M.Rin - .004, w = M.chW;
+    const fShelf = (x, y) => { const r = Math.hypot(x, y); if (r > R) return R - r; if (M.hasWall && KC.behindWall(M, x, y) > -M.tw) return -1; return KC.chDist(M, x, y) - w; };
+    const fill = KC.marchFill(fShelf, -R, -R, R, R, .012);
+    const pos = new Float32Array(fill.tris.length * 3);
+    fill.tris.forEach((p, i) => { pos[i * 3] = p[0]; pos[i * 3 + 1] = p[1]; pos[i * 3 + 2] = M.hb + KC.SHELF_I * Math.max(0, KC.chDist(M, p[0], p[1]) - w); });
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.computeVertexNormals();
+    put(g, C.lot, 'lot', {lvl: L0});
+    // стенки каналов и дно
+    for (const c of M.ch) {
+      const pts = c.pts, n = pts.length, segA = 20, vb = [], vw = [];
+      const tang = i => { const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)]; const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [(b[0] - a[0]) / L, (b[1] - a[1]) / L]; };
+      const inOther = (x, y) => { if (Math.hypot(x, y) > R + .001) return true; for (const o of M.ch) if (o !== c && distPoly(o.pts, x, y) < w - .002) return true; return false; };
+      const zb = (x, y, own) => { let z = own; for (const o of M.ch) if (o !== c) { const d = distPoly(o.pts, x, y); if (d < w) z = Math.min(z, M.hv + w - Math.sqrt(w * w - d * d)); } return z; };
+      for (let i = 0; i < n - 1; i++) {
+        const t0 = tang(i), t1 = tang(i + 1), n0 = [-t0[1], t0[0]], n1 = [-t1[1], t1[0]];
+        for (let a = 0; a < segA; a++) {
+          const th0 = Math.PI * a / segA, th1 = Math.PI * (a + 1) / segA;
+          const P = (pt, nn, th) => { const x = pt[0] + nn[0] * w * Math.cos(th), y = pt[1] + nn[1] * w * Math.cos(th); if (Math.hypot(x, y) > R + .05) return null; return [x, y, zb(x, y, M.hv + w - w * Math.sin(th))]; };
+          const q = [P(pts[i], n0, th0), P(pts[i + 1], n1, th0), P(pts[i + 1], n1, th1), P(pts[i], n0, th1)];
+          if (q.some(v => !v)) continue;
+          vb.push(...q[0], ...q[1], ...q[2], ...q[0], ...q[2], ...q[3]);
+        }
+        for (const side of [1, -1]) {
+          const a = [pts[i][0] + n0[0] * w * side, pts[i][1] + n0[1] * w * side], b = [pts[i + 1][0] + n1[0] * w * side, pts[i + 1][1] + n1[1] * w * side];
+          const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+          if (inOther(mx, my) || (M.hasWall && KC.behindWall(M, mx, my) > -M.tw)) continue;
+          const za = M.hb + 0, zc = M.hv + w;
+          vw.push(a[0], a[1], zc, b[0], b[1], zc, b[0], b[1], za, a[0], a[1], zc, b[0], b[1], za, a[0], a[1], za);
+        }
+      }
+      for (const [arr, col] of [[vb, C.chan], [vw, C.lot]]) { if (!arr.length) continue; const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(arr), 3)); gg.computeVertexNormals(); put(gg, col, 'lot', {lvl: L0}); }
+    }
+    // слой под каналом (hv>0) — заполнение
+    if (M.hv > .001) { const sh = new THREE.Shape(); sh.absarc(0, 0, R, 0, Math.PI * 2, false); put(shapeGeo(sh, M.hv * .98), C.lot, 'lot', {lvl: L0}); }
+  }
+  // стенка-растекатель и стальной лист
+  if (M.hasWall) {
+    const ux = M.uin[0], uy = M.uin[1], ang = M.pipes[1].ang;
+    M.wall.forEach(p => put(new THREE.BoxGeometry(M.tw, M.bw, p.z1 - p.z0 - .006).translate(M.dw - M.tw / 2, 0, (p.z0 + p.z1) / 2), C.wall, p.key, {rotz: ang, lvl: lvlAt(p.z0), edges: true}));
+    const ch = d => Math.sqrt(Math.max(.0001, (M.Rin - .01) ** 2 - d * d));
+    const sh = new THREE.Shape(); sh.moveTo(M.dw, -ch(M.dw));
+    for (let i = 0; i <= 24; i++) { const y = -ch(M.dw) + 2 * ch(M.dw) * i / 24; sh.lineTo(Math.max(M.dw, Math.sqrt(Math.max(0, (M.Rin - .01) ** 2 - y * y))), y); }
+    sh.lineTo(M.dw, ch(M.dw));
+    put(shapeGeo(sh, .012), C.steel, 'wall0', {rotz: ang, lvl: L0, m: {metalness: .4, roughness: .5}});
+    void ux; void uy;
+  }
+  // скобы
+  M.steps.forEach(zz => {
+    const up = zz > M.V + M.hpp, r = KC.stepRadius(M, zz) - (up ? M.a : 0), cx = up ? M.gx : 0, cy = up ? M.gy : 0, L = lvlAt(zz);
+    for (const yy of [-.15, .15]) put(new THREE.BoxGeometry(.12, .022, .022).translate(r - .06, yy, 0), C.step, 'sk', {pos: [cx, cy, zz], rotz: M.go, lvl: L, m: {metalness: .4, roughness: .45}});
+    put(new THREE.BoxGeometry(.022, .32, .022).translate(r - .12, 0, 0), C.step, 'sk', {pos: [cx, cy, zz], rotz: M.go, lvl: L, m: {metalness: .4, roughness: .45}});
+  });
+  // МС на швах
+  M.seams.forEach(s => {
+    const B = KC.MS[s.mark].B / 1000, L = (order.get(s.below.key) ?? 0) + .5;
+    for (const a of s.angs) {
+      const r0 = s.rin - .012, parts = [];
+      parts.push(new THREE.BoxGeometry(B, .08, .006).translate(r0 + B / 2, 0, 0));                         // стенка в шве
+      const fl = (r, z0, z1) => parts.push(new THREE.BoxGeometry(.008, .08, z1 - z0).translate(r, 0, (z0 + z1) / 2));
+      const rIn = r0 - .004, rOut = r0 + B + .004;
+      if (!s.asym) { fl(rIn, -.08, .08); fl(rOut, -.08, .08); }
+      else if (s.longOut) { fl(rOut, -.08, .08); fl(rIn, -.078, .006); }   // под ПП: длинная полка снаружи, короткая — вниз по кольцу
+      else { fl(rIn, -.08, .08); fl(rOut, -.006, .078); }                 // ПП–горловина: длинная внутрь (кольцо + край лаза), короткая — вверх
+      for (const g of parts) put(g, C.ms, s.key, {pos: [s.cx, s.cy, s.z], rotz: a, lvl: L, m: {metalness: .5, roughness: .4}});
+    }
+  });
+  // покрытие у люка
+  buildSurface(M, THREE, put, shapeGeo, C, M.els.length);
+  // свет
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8f94, .62));
+  const dl = new THREE.DirectionalLight(0xffffff, .72); dl.position.set(-3, -5, 8); scene.add(dl);
+  const dl2 = new THREE.DirectionalLight(0xffffff, .25); dl2.position.set(4, 2, 3); scene.add(dl2);
+  return {scene, meshes, mats: [...mats.values(), edgeMat], THREE, M, maxLvl: M.els.length + 1};
+};
+function buildSurface(M, THREE, put, shapeGeo, C, L) {
+  const cx = M.gx, cy = M.gy, Rs = M.surfR, zg = M.zg, rh = M.hat[0] + .005;
+  const disc = (r, holes) => { const sh = new THREE.Shape(); sh.absarc(0, 0, r, 0, Math.PI * 2, false); for (const h of holes) sh.holes.push(h); return sh; };
+  const circ = r => { const p = new THREE.Path(); p.absarc(0, 0, r, 0, Math.PI * 2, true); return p; };
+  const rect = (hx, hy) => { const p = new THREE.Path(); p.moveTo(-hx, -hy); p.lineTo(-hx, hy); p.lineTo(hx, hy); p.lineTo(hx, -hy); p.lineTo(-hx, -hy); return p; };
+  const holeG = M.hat[1] ? rect(.365, .365) : circ(rh);
+  if (M.place === 'Д') {
+    put(shapeGeo(disc(Rs, [holeG]), .07, 96), C.asph, 'surf', {pos: [cx, cy, zg - .07], rotz: M.go, lvl: L, m: {roughness: .95}});
+    if (M.pd6) put(shapeGeo(disc(Rs, [rect(1.255, .88)]), .25, 96), C.gravel, 'surf', {pos: [cx, cy, zg - .32], rotz: M.go, lvl: L});
+    else put(shapeGeo(disc(Rs, [circ(.43)]), .25, 96), C.gravel, 'surf', {pos: [cx, cy, zg - .32], lvl: L});
+  } else if (M.place === 'Т') {
+    const g = shapeGeo(disc(Rs, [holeG]), .06, 96);
+    put(g, C.tile, 'surf', {pos: [cx, cy, zg - .06], rotz: M.go, lvl: L, m: {map: tileTexture(THREE), roughness: .9}});
+    put(shapeGeo(disc(Rs, [circ(.43)]), .1, 96), C.sand, 'surf', {pos: [cx, cy, zg - .16], lvl: L});
+  } else {
+    // газон / незастроенная: грунт с травой, асфальтовая отмостка вокруг люка с уклоном от люка
+    const top = M.place === 'Н' ? C.soil : C.grass;
+    put(shapeGeo(disc(Rs, [circ(M.otmR)]), .15, 96), M.place === 'Н' ? C.soil : C.soil, 'surf', {pos: [cx, cy, zg - .17], lvl: L});
+    put(shapeGeo(disc(Rs, [circ(M.otmR)]), .02, 96), top, 'surf', {pos: [cx, cy, zg - .02], lvl: L, m: {roughness: 1}});
+    const zi = M.ztop - .015, zo = zg + .0;
+    const prof = [new THREE.Vector2(rh, zi - .03 - .12), new THREE.Vector2(M.otmR, zo - .03 - .12), new THREE.Vector2(M.otmR, zo - .03), new THREE.Vector2(rh, zi - .03)];
+    put(new THREE.LatheGeometry(prof.concat([prof[0]]), 96).rotateX(Math.PI / 2), C.gravel, 'surf', {pos: [cx, cy, 0], lvl: L});
+    const pa = [new THREE.Vector2(rh, zi - .03), new THREE.Vector2(M.otmR, zo - .03), new THREE.Vector2(M.otmR, zo), new THREE.Vector2(rh, zi)];
+    put(new THREE.LatheGeometry(pa.concat([pa[0]]), 96).rotateX(Math.PI / 2), C.asph, 'surf', {pos: [cx, cy, 0], lvl: L, m: {roughness: .95}});
+  }
+}
+function tileTexture(THREE) {
+  if (tileTexture.t) return tileTexture.t;
+  const cv = document.createElement('canvas'); cv.width = cv.height = 256; const g = cv.getContext('2d');
+  g.fillStyle = '#c9c2b6'; g.fillRect(0, 0, 256, 256); g.strokeStyle = '#8f887c'; g.lineWidth = 3;
+  for (let i = 0; i <= 256; i += 64) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 256); g.stroke(); g.beginPath(); g.moveTo(0, i); g.lineTo(256, i); g.stroke(); }
+  const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(4, 4); tileTexture.t = t; return t;
+}
+
+/* крышки разреза: сечения элементов плоскостью и профиль лотка; лежат в плоскости разреза со сдвигом в видимую сторону */
+KC.addCaps = function (SC, phi) {
+  const {scene, M, THREE} = SC, ux = Math.cos(phi), uy = Math.sin(phi), nx = -uy, ny = ux, eps = .0015, list = [];
+  const capMat = new THREE.MeshStandardMaterial({color: KC.COL.cap, roughness: .95, side: THREE.DoubleSide});
+  const ironMat = new THREE.MeshStandardMaterial({color: 0x2a2d31, roughness: .8, side: THREE.DoubleSide});
+  const lvlOf = key => { const m = SC.meshes.find(x => x.userData.key === key); return m ? m.userData.lvl : 0; };
+  const quad = (s0, s1, z0, z1, mat, key) => {
+    const g = new THREE.BufferGeometry(), P = (s, z) => [s * ux + nx * eps, s * uy + ny * eps, z];
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([...P(s0, z0), ...P(s1, z0), ...P(s1, z1), ...P(s0, z0), ...P(s1, z1), ...P(s0, z1)]), 3)); g.computeVertexNormals();
+    const m = new THREE.Mesh(g, mat); m.userData = {key, cap: true, lvl: lvlOf(key), base: mat}; scene.add(m); SC.meshes.push(m); list.push(m);
+  };
+  const {out} = KC.cutParts(M, phi);
+  for (const p of out) quad(p.s0, p.s1, p.z0, p.z1, p.cls === 'iron' ? ironMat : capMat, p.key);
+  // лоток
+  const prof = KC.lotProfile(M, phi, .006), pos = [];
+  for (let i = 0; i < prof.length - 1; i++) {
+    const [s0, z0] = prof[i], [s1, z1] = prof[i + 1], P = (s, z) => [s * ux + nx * eps, s * uy + ny * eps, z];
+    pos.push(...P(s0, 0), ...P(s1, 0), ...P(s1, z1), ...P(s0, 0), ...P(s1, z1), ...P(s0, z0));
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3)); g.computeVertexNormals();
+  const lm = new THREE.MeshStandardMaterial({color: 0xcfcac0, roughness: .95, side: THREE.DoubleSide}); const m = new THREE.Mesh(g, lm);
+  m.userData = {key: 'lot', cap: true, lvl: lvlOf('lot'), base: lm}; scene.add(m); SC.meshes.push(m); list.push(m);
+  SC.mats.push(capMat, ironMat, lm);
+  return list;
+};
+// разнести элементы по высоте: t от 0 до 1
+KC.explode = function (SC, t, gap = .32) { for (const m of SC.meshes) { const base = m.userData.z0 ?? (m.userData.z0 = m.position.z); m.position.z = base + t * gap * (m.userData.lvl || 0); } };
+// точки привязки подписей (центр элемента по высоте, справа от элемента в направлении «вправо» камеры)
+KC.labelAnchors = function (M, right2) {
+  const out = [], rx = right2[0], ry = right2[1];
+  for (const e of M.els) {
+    const r = e.kind === 'ПД' ? 1.0 : e.rout;
+    const hmm = M.dims[e.mark] ? M.dims[e.mark].h : Math.round((e.z1 - e.z0) * 1000);
+    out.push({key: e.key, p: [e.cx + rx * r, e.cy + ry * r, (e.z0 + e.z1) / 2], text: `${e.pos ? e.pos + '  ' : ''}${e.mark}${e.q > 1 ? ' ×' + e.q : ''}`, sub: e.kind === 'ЛЮК' ? `h ${Math.round(M.Hl * 1000)}` : `h ${hmm}${e.q > 1 ? ' ×' + e.q : ''}`, lvlKey: e.key});
+  }
+  return out;
+};
+})(typeof window !== 'undefined' ? window : globalThis);
