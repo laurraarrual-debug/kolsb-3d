@@ -27,7 +27,7 @@ KC.MS = {'МС-1': {B: 90, kg: 1.94, asym: false}, 'МС-2': {B: 100, kg: 1.98, 
          'МС-5': {B: 90, kg: 1.56, asym: true}, 'МС-6': {B: 100, kg: 1.60, asym: true}, 'МС-7': {B: 110, kg: 1.63, asym: true}, 'МС-8': {B: 120, kg: 1.67, asym: true}};
 KC.OTM_S = 5.338;          // асфальтовая отмостка на 1 люк, м² (спецификация «Авто Колодцев»)
 KC.SHELF_I = 0.02;         // уклон полок к лотку
-KC.TAPE_TEXT = 'ЛЕНТА';   // надпись на ленте в 3D
+KC.TAPE_TEXT = 'ГИДРОИЗОЛЯЦИОННАЯ ЛЕНТА';   // надпись на ленте в 3D
 KC.PLACE = {'Г': 'газон', 'Т': 'тротуар', 'Д': 'проезжая часть', 'Н': 'незастроенная территория'};
 
 /* ---------------- модель ---------------- */
@@ -152,7 +152,7 @@ function buildTapes(M) {
   M.gorl.forEach(g => gb.push({z: g.z0 - S2, el: g}));
   if (M.koE) for (let i = 0; i < M.koE.q; i++) gb.push({z: M.koE.z0 + i * .08 - S2, el: M.koE});
   gb.forEach((g, i) => M.tapes.push({z: g.z, lo: i === 0 ? M.V + M.hpp : -1, cx: M.gx, cy: M.gy, r: .42, part: 'g', below: i === 0 ? M.ppE : g.el}));
-  M.tapeW = .30; M.tapeAdd = .10;
+  M.tapeW = N(M.w, 'lentaW') || .30; M.tapeN = N(M.w, 'lentaN') || 1; M.tapeAdd = .10; M.bitron = N(M.w, 'bitron') || 1.5;
 }
 
 /* ---------------- лоток ----------------
@@ -367,15 +367,18 @@ KC.stepsOf = function (M) {
     }
   }
   out.push({els: ['sk'], t: 'Скобы ходовые', fc: `217-110-0103 · ${N(w, 'sk')} шт.`, todo: ['По одной вертикали под лазом, шаг 300 мм.', 'Верхняя — у люка, нижняя — над лотком.'], chk: 'Крепление каждой скобы.'});
-  out.push({els: ['coat'], nohi: true, t: 'Гидроизоляция битумом', fc: `внутр. + наруж. · ${fmt(N(w, 'gidro'))} м² (справочно)`, todo: ['Очистить и огрунтовать битумным праймером.', 'Снаружи — битумная мастика сплошным слоем, без пропусков.', 'Подробно — лист «Гидроизоляция».'], chk: 'Покрытие сплошное, без пропусков.'});
+  const gin = N(w, 'gin'), gout = N(w, 'gout');
+  out.push({els: ['coat'], nohi: true, t: 'Гидроизоляция', fc: gout ? `снаружи ${fmt(gout)} м² · внутри ${fmt(gin)} м²` : `внутр. + наруж. · ${fmt(N(w, 'gidro'))} м²`,
+    todo: ['Огрунтовка, затем горячий битум 2 слоя — 5 мм.', 'Днище снаружи — асфальт 10 мм.', `Внутри — Битрон-11, ${fmt(M.bitron, 1)} кг/м², один раз.`], chk: 'Покрытие сплошное, без пропусков.'});
   const jr = M.tapes.filter(t => t.part === 'r').length, jg = M.tapes.length - jr;
-  out.push({els: ['tape'], t: 'Лента на стыки', fc: `${jr + jg} ${jr + jg === 1 ? 'стык' : 'стыков'} · ${fmt(N(w, 'lenta'))} м²`, todo: [`Каждый стык обмотать полосой 0,30 м — по 0,15 м выше и ниже шва.`, 'Нахлёст по длине — 0,10 м; лента — поверх мастики.', `Рабочая часть — ${jr}, горловина — ${jg}.`], chk: 'Лента прилегает без складок.'});
+  out.push({els: ['tape'], t: 'Лента на стыки — гидроизол', fc: `${jr + jg} ${jr + jg === 1 ? 'стык' : 'стыков'} · ${fmt(N(w, 'lenta'))} м²${M.tapeN > 1 ? ` (${M.tapeN} слоя)` : ''}`,
+    todo: [`Гидроизол ГИ-Г${M.tapeN > 1 ? ` в ${M.tapeN} слоя` : ''}: полоса ${fmt(M.tapeW)} м — по ${fmt(M.tapeW / 2)} м выше и ниже шва.`, `На горячий битум; нахлёст по длине — ${fmt(M.tapeAdd)} м.`, `Рабочая часть — ${jr}, горловина — ${jg}.`], chk: 'Без складок и пузырей, края прижаты.'});
   return out;
 };
 
 /* ---------------- упаковка данных колодца в ссылку (для QR) ---------------- */
 KC.PACK_KEYS = ['nom', 'per', 'mark', 'H', 'D', 'Du', 'drop', 'mesto', 'hatch', 'placeName', 'Hl', 'pod', 'pd6', 'hl', 'hv', 'H1', 'V', 'Wfact', 'over', 'ppd', 'hpp',
-  'pn', 'ring9', 'ring6', 'n9', 'n6', 'pp', 'n76', 'n73', 'nKO', 'sk', 'zad', 'lot', 'gidro', 'Dout', 'pnD', 'pnH', 'h9', 'h6', 'Hst', 'zin', 'wall', 'els', 'dims', 'seism', 'msk', 'msg', 'grunt', 'lenta'];
+  'pn', 'ring9', 'ring6', 'n9', 'n6', 'pp', 'n76', 'n73', 'nKO', 'sk', 'zad', 'lot', 'gidro', 'Dout', 'pnD', 'pnH', 'h9', 'h6', 'Hst', 'zin', 'wall', 'els', 'dims', 'seism', 'msk', 'msg', 'grunt', 'lenta', 'gin', 'gout', 'gpn', 'lentaW', 'lentaN', 'bitron'];
 const b64u = {
   enc: u8 => { let s = ''; for (let i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); },
   dec: s => { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
@@ -546,8 +549,13 @@ KC.buildScene = function (M, THREE) {
   for (const e of M.els) {
     const L = order.get(e.key);
     if (e.kind === 'КС') shell(0, 0, M.Rout + .003, e.z0, e.z1, 'coat', C.coat, L);
-    else if (e.kind === 'ПП') shell(0, 0, M.Rout + .003, e.z0, e.z1, 'coat', C.coat, L);
-    else if (e.kind === 'ПН') shell(0, 0, e.rout + .003, e.z0, e.z1, 'coat', C.coat, L);
+    else if (e.kind === 'ПП') { shell(0, 0, M.Rout + .003, e.z0, e.z1, 'coat', C.coat, L);
+      // верх плиты перекрытия вокруг горловины — тоже под битумом (входит в площадь «снаружи» по справочнику)
+      const sh = new THREE.Shape(); sh.absarc(0, 0, M.Rout + .003, 0, Math.PI * 2, false); const hl = new THREE.Path(); hl.absarc(M.gx, M.gy, .425, 0, Math.PI * 2, true); sh.holes.push(hl);
+      put(shapeGeo(sh, .003).translate(0, 0, e.z1 + .001), C.coat, 'coat', {lvl: L, m: {roughness: .45, metalness: .05}}); }
+    else if (e.kind === 'ПН') { shell(0, 0, e.rout + .003, e.z0, e.z1, 'coat', C.coat, L);
+      const sh = new THREE.Shape(); sh.absarc(0, 0, e.rout + .003, 0, Math.PI * 2, false); const hl = new THREE.Path(); hl.absarc(0, 0, M.Rout + .003, 0, Math.PI * 2, true); sh.holes.push(hl);
+      put(shapeGeo(sh, .003).translate(0, 0, e.z1 + .001), C.coat, 'coat', {lvl: L, m: {roughness: .45, metalness: .05}}); }
     else if (e.kind === 'КГ') shell(e.cx, e.cy, .423, e.z0, e.z1, 'coat', C.coat, L, 64);
     else if (e.kind === 'КО') for (let i = 0; i < e.q; i++) shell(e.cx, e.cy, .423, e.z0 + i * .08, e.z0 + i * .08 + .07, 'coat', C.coat, L, 64);
   }
@@ -561,14 +569,20 @@ KC.buildScene = function (M, THREE) {
   // лента как на стройке: чёрная, глянцевая, с синей надписью «ЛЕНТА» по кругу и светлыми кромками
   const tapeMat = (h, r) => {
     if (typeof document === 'undefined') return null;
-    const rows = Math.max(1, Math.round(h / .3)), c = document.createElement('canvas'); c.width = 1024; c.height = Math.max(48, Math.round(160 * h / .3));
+    const rows = Math.max(1, Math.round(h / .3)), c = document.createElement('canvas'); c.width = 2048; c.height = Math.max(48, Math.round(2048 / (2 * Math.PI * r) * h));
     const g = c.getContext('2d'); g.fillStyle = '#262a30'; g.fillRect(0, 0, c.width, c.height);
     g.fillStyle = '#5d6772'; g.fillRect(0, 0, c.width, 5); g.fillRect(0, c.height - 5, c.width, 5);
-    const txt = KC.TAPE_TEXT || 'ЛЕНТА', n = txt.length > 8 ? 1 : 2, segW = c.width / n;
-    g.font = 'bold 100px Arial, sans-serif'; const fit = segW * .84 / g.measureText(txt).width * 100;
-    g.font = `bold ${Math.round(Math.min(c.height / rows * .42, fit))}px Arial, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#2f86e0';
-    for (let i = 0; i < rows; i++) { const y = c.height * (i + .5) / rows + 2; for (let j = 0; j < n; j++) g.fillText(txt, segW * (j + .5), y); }
-    const t = new THREE.CanvasTexture(c); t.wrapS = THREE.RepeatWrapping; t.anisotropy = 8; t.repeat.x = Math.max(1, Math.round(2 * Math.PI * r / 1.6));
+    const txt = KC.TAPE_TEXT || 'ЛЕНТА', circ = 2 * Math.PI * r, n = Math.max(2, Math.round(circ / (txt.length > 8 ? 2.4 : 1.6))), segW = c.width / n;
+    const arc = Math.min(txt.length > 8 ? 1.2 : .55, r * 1.4), pxm = c.width / circ;   // длина надписи по дуге, м; пикселей на метр
+    const lines = txt.length > 8 && txt.includes(' ') ? [txt.slice(0, txt.lastIndexOf(' ')), txt.slice(txt.lastIndexOf(' ') + 1)] : [txt];   // длинная — в две строки
+    g.font = 'bold 100px Arial, sans-serif'; const fit = arc * pxm / Math.max(...lines.map(l => g.measureText(l).width)) * 100;
+    const fs = Math.round(Math.min(c.height / rows * (lines.length > 1 ? .33 : .42), fit));
+    g.font = `bold ${fs}px Arial, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#2f86e0';
+    for (let i = 0; i < rows; i++) { const y = c.height * (i + .5) / rows + 2;
+      for (let j = 0; j < n; j++) lines.forEach((l, k) => g.fillText(l, segW * (j + .5), y + (k - (lines.length - 1) / 2) * fs * 1.12)); }
+    const t = new THREE.CanvasTexture(c); t.wrapS = THREE.RepeatWrapping; t.anisotropy = 8;
+    // первая надпись — по центру к смотрящему: угол φ на кольце ↔ u = (φ + π/2) / 2π
+    const fr = M.go - Math.PI / 2 - .4, uc = (((fr + Math.PI / 2) / (2 * Math.PI)) % 1 + 1) % 1; t.offset.x = ((.5 / n - uc) % 1 + 1) % 1;
     return new THREE.MeshStandardMaterial({map: t, roughness: .32, metalness: .05, side: THREE.DoubleSide});
   };
   for (const q of tb) { const r = q.r + .007, mt = tapeMat(q.z1 - q.z0, r);

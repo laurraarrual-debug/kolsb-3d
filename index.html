@@ -109,7 +109,7 @@ tr.sum td{font-weight:700;background:var(--surface-2)} tr.sum td.ok{color:var(--
 <script src="core.js"></script>
 <script>
 "use strict";
-const DEMO = 'k1TY4xbgIxEEWvgqb-WDPrHa-9nIAzIIpI6dOliSOhlCnS0IHCKuQCpECJUMIZZm8UGbRAY3net-f9J3qkVkB31M4YEnkOeqCWrOsX9mO_tu8XIzvaV_9qezv0L7Yj0D21MxICg2xlH_Y5FkLt2EOcwjOfkiWBbFuOpe3s2472R2AnFdixgsGuBpd_Ed55sIseWnBoyjsFWWfvonTWiLp0vQaCh4DEOutEx1WpI4WV_ZWAXRNQBxchLkRUgzomsNOEU0kaHFlyUp4MnuyzMF_mkCWHwJOLrMzxHDfOZ8niT9MmZJ_LnnX_ZoeRbUsk4arJFTNnqW5UooWEyDmmW-MFa7o1NwMWvRYoMNacqzTU0HgmDRMSIsg2tiLQdEoQcV7nz_8';
+const DEMO = 'k1VY8xTgMxEEWvEk39Y83Ya6-9OUHOEKVAoqejwUgRJQVNuiCyIlwgFBEogpxh9kbIG202SJbleWPP-36ge2oEdEPNgiGRl6A7akjbbqXf-qOHbjXRk352z3rQY_ekewLdUrMgITBIN_quH1MhVIYdxHg45r6zJpDuyrbWvX7pSX8JbMSCDXsw2FTg8i7CGQc20cEXHOpyz4O01TfxdNaIN2k8BoKDgERbbcVPbYkjhZX5VsCmDqiCiRATIuygjglsfEIfkgZHlpw8zwZPdlmYL3XIkkPg2UVW6nhu18ZlyeL6ahuyy2XOa_eix4nuSkvCqMmWmbPYK5X4QkLkHNO18YJ9ujbXAxY_BigwVpxtGmL4eCY1ExIiSLe6IdB8ThAxzvef_7eWj38';
 const $ = s => document.querySelector(s);
 const {fmt, sgn, esc, N, S} = KC;
 let coatLbl = [], showCoat = false, M, SC, renderer, camera, controls, steps, stepIdx = -1, cut = false, expT = 0, expTarget = 0, showLbl = true, lblEls = [], needs = true;
@@ -145,7 +145,7 @@ function initGL() {
   lblEls = M.els.map(e => { const d = document.createElement('div'); d.className = 'lbl'; const h = e.kind === 'ЛЮК' ? Math.round(M.Hl * 1000) : (M.dims[e.mark] ? M.dims[e.mark].h : Math.round((e.z1 - e.z0) * 1000));
     d.innerHTML = `${esc(e.mark)}${e.q > 1 ? ' ×' + e.q : ''}<small>h ${h}${e.q > 1 ? ' ×' + e.q : ''} мм</small>`; lab.appendChild(d); return {e, d}; });
   // выноски гидроизоляции — слева от колодца
-  coatLbl = [['tape', 'ЛЕНТА', 'на стыках'], ['coat', 'БИТУМ', 'сплошь']].map(([k, t, sm]) => { const d = document.createElement('div'); d.className = 'lbl l' + (k === 'tape' ? ' tp' : ''); d.innerHTML = `${t}<small>${sm}</small>`; lab.appendChild(d); return {k, d}; });
+  coatLbl = [['tape', 'ЛЕНТА', 'гидроизол, 2 слоя'], ['coat', 'БИТУМ', 'горячий, 5 мм']].map(([k, t, sm]) => { const d = document.createElement('div'); d.className = 'lbl l' + (k === 'tape' ? ' tp' : ''); d.innerHTML = `${t}<small>${sm}</small>`; lab.appendChild(d); return {k, d}; });
   addEventListener('resize', () => { needs = true; });
   requestAnimationFrame(loop);
 }
@@ -245,7 +245,7 @@ function buildPanel(w, obj) {
     <div><h2>Основание и гидроизоляция</h2><table><tbody>
       <tr><td>Основание (грунт ${M.grunt})</td><td class="r">${M.base.map(b => esc(b.n)).join('<br>')}${M.zamok ? '<br>водоупорный замок 600×400' : ''}</td></tr>
       <tr><td>Снаружи</td><td class="r">битумная мастика</td></tr>
-      <tr><td>Лента на стыки</td><td class="r">${M.tapes.length} стыков · полоса 0,30 м · ${fmt(N(w, 'lenta'))} м²</td></tr></tbody></table>
+      <tr><td>Лента на стыки</td><td class="r">гидроизол ГИ-Г${M.tapeN > 1 ? ' в ' + M.tapeN + ' слоя' : ''} · ${M.tapes.length} стыков · полоса ${fmt(M.tapeW)} м · ${fmt(N(w, 'lenta'))} м²</td></tr></tbody></table>
       <div class="note">Основание — по ТПР 902-09-22.84, Альбом II, лист АС-1.</div></div>
     <div class="msg ${S(w, 'msg') === 'ОК' ? '' : 'bad'}">Проверка расчёта: ${esc(S(w, 'msg'))}</div>
     <div class="note">Модель построена по данным таблицы «Авто Колодцы», переданным в ссылке. Демонстрационная версия KOLSB.</div>`;
