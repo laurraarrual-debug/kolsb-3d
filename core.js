@@ -401,7 +401,7 @@ KC.unpack = async function (s) {
 
 /* ---------------- 3D-сцена (three.js) ---------------- */
 KC.COL = {ring: 0xc9c5bb, ring2: 0xbfbbb0, plate: 0xaaa69c, gorl: 0xd5cfc2, ko: 0xe0dacc, lot: 0xbdb8ad, chan: 0x7f95a4, pipe: 0xd0712f, pipeIn: 0x9c4f1d,
-  iron: 0x34383d, lid: 0x4e555c, step: 0xd9a21b, wall: 0x8d77bd, steel: 0x4a5560, ms: 0x2f6f9f, hi: 0xf2a516, coat: 0x1c1e20, tape: 0xc0503a, cap: 0xe9e4d8,
+  iron: 0x34383d, lid: 0x4e555c, step: 0xd9a21b, wall: 0x8d77bd, steel: 0x4a5560, ms: 0x2f6f9f, hi: 0xf2a516, coat: 0x1c1e20, tape: 0x262a30, cap: 0xe9e4d8,
   grass: 0x76a650, soil: 0x9a7b5a, lean: 0xb0aca2, mortar: 0xc9c1b0, clay: 0x8f6a4a, comp: 0xa48a6c, asph: 0x3f4348, gravel: 0x9d978c, tile: 0xb8b1a5, sand: 0xd9c9a3, edge: 0x4a4a4a};
 KC.buildScene = function (M, THREE) {
   const C = KC.COL, scene = new THREE.Scene(), meshes = [], mats = new Map();
@@ -557,7 +557,19 @@ KC.buildScene = function (M, THREE) {
     const pv = tb.find(q => q.cx === t.cx && q.cy === t.cy && q.r === t.r && z0 <= q.z1 + .005 && z1 >= q.z0 - .005);
     if (pv) { pv.z0 = Math.min(pv.z0, z0); pv.z1 = Math.max(pv.z1, z1); } else tb.push({cx: t.cx, cy: t.cy, r: t.r, z0, z1, L, seg: t.part === 'r' ? 96 : 64});
   }
-  for (const q of tb) shell(q.cx, q.cy, q.r + .007, q.z0, q.z1, 'tape', C.tape, q.L, q.seg);
+  // лента как на стройке: чёрная, глянцевая, с синей надписью «ЛЕНТА» по кругу и светлыми кромками
+  const tapeMat = (h, r) => {
+    if (typeof document === 'undefined') return null;
+    const rows = Math.max(1, Math.round(h / .3)), c = document.createElement('canvas'); c.width = 1024; c.height = Math.max(48, Math.round(160 * h / .3));
+    const g = c.getContext('2d'); g.fillStyle = '#262a30'; g.fillRect(0, 0, c.width, c.height);
+    g.fillStyle = '#5d6772'; g.fillRect(0, 0, c.width, 5); g.fillRect(0, c.height - 5, c.width, 5);
+    g.font = `bold ${Math.round(c.height / rows * .42)}px Arial, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#2f86e0';
+    for (let i = 0; i < rows; i++) { const y = c.height * (i + .5) / rows + 2; g.fillText('ЛЕНТА', c.width * .25, y); g.fillText('ЛЕНТА', c.width * .75, y); }
+    const t = new THREE.CanvasTexture(c); t.wrapS = THREE.RepeatWrapping; t.anisotropy = 8; t.repeat.x = Math.max(1, Math.round(2 * Math.PI * r / 1.6));
+    return new THREE.MeshStandardMaterial({map: t, roughness: .32, metalness: .05, side: THREE.DoubleSide});
+  };
+  for (const q of tb) { const r = q.r + .007, mt = tapeMat(q.z1 - q.z0, r);
+    put(new THREE.CylinderGeometry(r, r, q.z1 - q.z0, q.seg, 1, true).rotateX(Math.PI / 2).translate(0, 0, (q.z0 + q.z1) / 2), C.tape, 'tape', Object.assign({pos: [q.cx, q.cy, 0], lvl: q.L, edges: true}, mt ? {mat: mt} : {m: {roughness: .32}})); }
   // покрытие у люка
   buildSurface(M, THREE, put, shapeGeo, C, M.els.length);
   // свет

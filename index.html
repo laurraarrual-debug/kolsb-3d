@@ -45,6 +45,8 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:14px/1
 .lbl small{display:block;font:500 10.5px var(--fm);color:var(--muted)}
 .lbl.hi{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .lbl::before{content:"";position:absolute;left:-8px;top:50%;width:8px;border-top:1px solid var(--muted)}
+.lbl.l{transform:translate(calc(-100% - 8px),-50%)}.lbl.l::before{left:auto;right:-8px}
+.lbl.tp{color:#1f6fc5;border-color:#1f6fc5}
 .panel{background:var(--surface);border-left:1px solid var(--line);overflow:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
 .panel h2{font:700 15px var(--f);margin:0}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
@@ -110,7 +112,7 @@ tr.sum td{font-weight:700;background:var(--surface-2)} tr.sum td.ok{color:var(--
 const DEMO = 'k1TY4xbgIxEEWvgqb-WDPrHa-9nIAzIIpI6dOliSOhlCnS0IHCKuQCpECJUMIZZm8UGbRAY3net-f9J3qkVkB31M4YEnkOeqCWrOsX9mO_tu8XIzvaV_9qezv0L7Yj0D21MxICg2xlH_Y5FkLt2EOcwjOfkiWBbFuOpe3s2472R2AnFdixgsGuBpd_Ed55sIseWnBoyjsFWWfvonTWiLp0vQaCh4DEOutEx1WpI4WV_ZWAXRNQBxchLkRUgzomsNOEU0kaHFlyUp4MnuyzMF_mkCWHwJOLrMzxHDfOZ8niT9MmZJ_LnnX_ZoeRbUsk4arJFTNnqW5UooWEyDmmW-MFa7o1NwMWvRYoMNacqzTU0HgmDRMSIsg2tiLQdEoQcV7nz_8';
 const $ = s => document.querySelector(s);
 const {fmt, sgn, esc, N, S} = KC;
-let showCoat = false, M, SC, renderer, camera, controls, steps, stepIdx = -1, cut = false, expT = 0, expTarget = 0, showLbl = true, lblEls = [], needs = true;
+let coatLbl = [], showCoat = false, M, SC, renderer, camera, controls, steps, stepIdx = -1, cut = false, expT = 0, expTarget = 0, showLbl = true, lblEls = [], needs = true;
 
 function theme() { try { const t = localStorage.getItem('kolsb-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {} }
 theme();
@@ -142,6 +144,8 @@ function initGL() {
   const lab = $('#labels'); lab.innerHTML = '';
   lblEls = M.els.map(e => { const d = document.createElement('div'); d.className = 'lbl'; const h = e.kind === 'ЛЮК' ? Math.round(M.Hl * 1000) : (M.dims[e.mark] ? M.dims[e.mark].h : Math.round((e.z1 - e.z0) * 1000));
     d.innerHTML = `${esc(e.mark)}${e.q > 1 ? ' ×' + e.q : ''}<small>h ${h}${e.q > 1 ? ' ×' + e.q : ''} мм</small>`; lab.appendChild(d); return {e, d}; });
+  // выноски гидроизоляции — слева от колодца
+  coatLbl = [['tape', 'ЛЕНТА', 'на стыках'], ['coat', 'БИТУМ', 'сплошь']].map(([k, t, sm]) => { const d = document.createElement('div'); d.className = 'lbl l' + (k === 'tape' ? ' tp' : ''); d.innerHTML = `${t}<small>${sm}</small>`; lab.appendChild(d); return {k, d}; });
   addEventListener('resize', () => { needs = true; });
   requestAnimationFrame(loop);
 }
@@ -196,6 +200,13 @@ function loop() {
     d.style.display = ''; pos.push({d, x: (p.x + 1) / 2 * W, y: (1 - p.y) / 2 * H});
     d.classList.toggle('hi', !!(st && st.els.includes(e.key)));
   });
+  { const coatOn = showLbl && !cut && expT < .02 && ((showCoat && !done) || (done && done.has('tape')));
+    const tr = M.tapes.filter(t => t.part === 'r'), tp = tr[Math.min(3, tr.length - 1)] || M.tapes[0], rg = M.rings[Math.min(1, M.rings.length - 1)] || M.rings[0], R = M.Rout + .012;
+    let yPrev = -1e9;
+    for (const {k, d} of coatLbl) { if (!coatOn || !tp) { d.style.display = 'none'; continue; }
+      const z = k === 'tape' ? tp.z : (rg ? (rg.z0 + rg.z1) / 2 : M.V / 2), p = new THREE.Vector3(-right.x / rl * R, -right.y / rl * R, z).project(camera);
+      const y = Math.max((1 - p.y) / 2 * H, yPrev + 38); yPrev = y;
+      d.style.display = ''; d.style.left = Math.max(84, (p.x + 1) / 2 * W) + 'px'; d.style.top = y + 'px'; } }
   pos.sort((a, b) => a.y - b.y); let yl = -1e9;
   for (const q of pos) { const y = Math.max(q.y, yl + 30); yl = y; q.d.style.left = q.x + 'px'; q.d.style.top = y + 'px'; }
   const card = $('#card'); if (!card.hidden) card.style.bottom = ($('.tools').offsetHeight + 16) + 'px';
