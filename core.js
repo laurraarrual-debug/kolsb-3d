@@ -46,7 +46,8 @@ KC.model = function (w, angs) {
   S(w, 'els').split(';').filter(Boolean).forEach((it, i) => {
     const [m, c, q, kg] = it.split('|'); const r = {pos: i + 1, mark: m, code: c, q: +q, kg: +kg}; M.rows.push(r); M.cat[m] = r; });
   M.dims = {};
-  S(w, 'dims').split(';').filter(Boolean).forEach(it => { const [m, a, b, h] = it.split('|'); M.dims[m] = {din: a, dout: b, h: +h}; });
+  // «2500×1750»: через AutoCAD (ANSI-1251) знак × приходит как «?» или «x» - возвращаем ×
+  S(w, 'dims').split(';').filter(Boolean).forEach(it => { const [m, a, b, h] = it.split('|'); M.dims[m] = {din: a, dout: String(b || '').replace(/(\d)\s*[x×х?]\s*(\d)/gi, '$1×$2'), h: +h}; });
   const pos = m => (M.cat[m] || {}).pos || '';
   const els = []; let z = 0;
   const addE = o => { o.id = els.length; o.key = 'e' + o.id; o.pos = pos(o.mark); els.push(o); return o; };
