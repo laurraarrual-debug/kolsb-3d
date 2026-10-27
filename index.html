@@ -361,6 +361,7 @@ function animPlan(i) {
   if (msBefore.length) { T.push({type: 'drop', ms: msBefore, dz: .5, t0: 0, d: .7, hide: true}); t = .85; }
   if (cur.has('base')) { T.push({type: 'grow', ms: ms('base'), pivot: M.zBase, t0: 0, d: 1.4}); t = 1.4; }
   if (cur.has('pipe')) { T.push({type: 'slide', ms: ms('pipe'), d0: 1.6, t0: 0, d: 1.6}); t = 1.6; }
+  if (cur.has('pipeD')) { T.push({type: 'slide', ms: ms('pipeD'), d0: 1.6, t0: 0, d: 1.6}); t = 1.6; }
   if (cur.has('lot')) { T.push({type: 'grow', ms: ms('lot'), pivot: 0, t0: 0, d: 1.8}); t = 1.8; }
   if (cur.has('wall0')) { T.push({type: 'grow', ms: ms('wall0'), pivot: 0, t0: 0, d: .6}); t = .7; }
   if (cur.has('sk')) {   // скобы — по одной, снизу вверх
