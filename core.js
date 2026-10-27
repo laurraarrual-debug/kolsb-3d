@@ -738,4 +738,6 @@ KC.labelAnchors = function (M, right2) {
   }
   return out;
 };
+// внутренние помощники — для модели водопроводных колодцев (corevv.js)
+KC._ = {lineCircle, lineBox, minus, tileTexture, b64u, zip, dir};
 })(typeof window !== 'undefined' ? window : globalThis);

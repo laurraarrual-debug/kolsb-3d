@@ -126,6 +126,7 @@ tr.sum td{font-weight:700;background:var(--surface-2)} tr.sum td.ok{color:var(--
 <script src="vendor/three.min.js"></script>
 <script src="vendor/OrbitControls.js"></script>
 <script src="core.js"></script>
+<script src="corevv.js"></script>
 <script>
 "use strict";
 const DEMO = 'k1TZExTiQxEEWvMqr4Y1XZbY975gScARGstDnZJmskNBEQgBAZCIZlL9AEI9AIOMP3jVZutodJLNcv-_9Xqt_ySxYG-SGLI4VlPYacyEK4rmd84zs39WzGT77US264rSsOAvkpiyODQnjHP_x7YILOaYC5iKA6dm4Fwud23HLgKz_5IVBnHuo0QqGug7Z_GcEFqMsBsclp3t5FCNd8sChfMRZd_31NggCDGNdcWzzwAoU1bfRPzSaiS85HmEsZfsrOPdTFHiOlTCHFSh91OQWVUEx1V6diJSVd7tJanXXJJ27qeb2pK245zPjKoV7wra74waFeFysWXRhd5i60Moyej6mE0uLu6xW3Mz63lqVvmuJVtZjfI7LYlJS15H4fbCfHfh9wPsn2f6wG0MTcafH9hBHzlzJXQY8M4SPvBHJ4KAjqfIZXZx18cmboXPbj3nxb9fHpPw';
@@ -138,14 +139,19 @@ theme();
 $('#bTheme').onclick = () => { const cur = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); const n = cur === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = n; try { localStorage.setItem('kolsb-theme', n); } catch (e) {} setBg(); needs = true; };
 function setBg() { if (renderer) renderer.setClearColor(new THREE.Color(inside ? '#bcd8ee' : (getComputedStyle(document.documentElement).getPropertyValue('--stage').trim() || '#dfe3e5')), 1); needs = true; }
 
+// водопроводные колодцы (В1): модель в осях колодца, сцена повёрнута на угол магистрали
+const VV = KC.VV, isVV = () => !!(M && M.vv);
+const wpt = (x, y) => isVV() ? VV.toW(M, x, y) : [x, y];
 async function start(payload) {
-  const {w, angsDeg, obj} = await KC.unpack(payload);
-  M = KC.model(w, angsDeg.map(d => d * Math.PI / 180));
-  steps = KC.stepsOf(M); elKeys = new Set(M.els.filter(e => e.kind !== 'ЛЮК' && e.kind !== 'ПД' && e.kind !== 'РШ').map(e => e.key));
+  const vv = payload.slice(0, 2) === 'v1';
+  const {w, angsDeg, obj} = vv ? await VV.unpack(payload) : await KC.unpack(payload);
+  M = vv ? VV.model(w, angsDeg.map(d => d * Math.PI / 180)) : KC.model(w, angsDeg.map(d => d * Math.PI / 180));
+  steps = vv ? VV.stepsOf(M) : KC.stepsOf(M); elKeys = new Set(M.els.filter(e => e.kind !== 'ЛЮК' && e.kind !== 'ПД' && e.kind !== 'РШ').map(e => e.key));
   $('#land').hidden = true; $('#app').hidden = false;
   document.title = `Колодец №${w.nom} — 3D`;
   $('#ttl').innerHTML = `Колодец <b>№${esc(w.nom)}</b>`;
-  $('#sub').textContent = [S(w, 'mark'), 'Ø' + Math.round(M.D * 1000), (S(w, 'placeName') || '').toLowerCase(), 'люк ' + S(w, 'hatch')].filter(Boolean).join(' · ');
+  $('#sub').textContent = (vv ? ['В1', M.rect ? `${S(w, 'pk')} ${N(w, 'A')}×${N(w, 'B')}` : 'Ø' + Math.round(M.D * 1000), (S(w, 'placeName') || '').toLowerCase(), 'люк ' + S(w, 'hatch') + (M.hatches.length > 1 ? ' ×' + M.hatches.length : '')]
+    : [S(w, 'mark'), 'Ø' + Math.round(M.D * 1000), (S(w, 'placeName') || '').toLowerCase(), 'люк ' + S(w, 'hatch')]).filter(Boolean).join(' · ');
   if (obj) $('#kk').textContent = obj;
   initGL(); buildPanel(w, obj); frame();
 }
@@ -153,16 +159,20 @@ function initGL() {
   const el = $('#view');
   renderer = new THREE.WebGLRenderer({antialias: true}); renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2)); renderer.localClippingEnabled = true;
   el.appendChild(renderer.domElement); setBg();
+  if (isVV()) { SC = VV.buildScene(M, THREE); const c = VV.cut3d(M); SC.caps = VV.addCaps(SC, c.phi, c.ox, c.oy, c.side); SC.plane = SC.planeSk = VV.clipPlane(M, THREE, c.phi, c.ox, c.oy, c.side); }
+  else {
   SC = KC.buildScene(M, THREE); SC.caps = KC.addCaps(SC, M.go);
   SC.plane = new THREE.Plane(new THREE.Vector3(-Math.sin(M.go), Math.cos(M.go), 0), 0);
   SC.planeSk = new THREE.Plane(new THREE.Vector3(Math.cos(M.go), Math.sin(M.go), 0), .05);   // поперёк: остаётся половина со скобами (они на оси выпуска), смотрим на неё изнутри
+  }
   SC.hiMat = new THREE.MeshStandardMaterial({color: KC.COL.hi, roughness: .6, side: THREE.DoubleSide}); SC.coatMat = new THREE.MeshStandardMaterial({color: KC.COL.coat, roughness: .7, side: THREE.DoubleSide});
   SC.mats.push(SC.hiMat, SC.coatMat);
   camera = new THREE.PerspectiveCamera(32, 1, .05, 200); camera.up.set(0, 0, 1);
   controls = new THREE.OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.dampingFactor = .12; controls.addEventListener('change', () => { needs = true; });
   resetView(); applyState();
   const lab = $('#labels'); lab.innerHTML = '';
-  lblEls = M.els.map(e => { const d = document.createElement('div'); d.className = 'lbl'; const h = e.kind === 'ЛЮК' ? Math.round(M.Hl * 1000) : (M.dims[e.mark] ? M.dims[e.mark].h : Math.round((e.z1 - e.z0) * 1000));
+  if (isVV()) lblEls = VV.labelAnchors(M, [1, 0]).map(a => { const d = document.createElement('div'); d.className = 'lbl'; d.innerHTML = `${esc(a.text.replace(/^\d+\s+/, ''))}<small>${esc(a.sub)}${a.nomm ? '' : ' мм'}</small>`; lab.appendChild(d); return {e: M.els.find(x => x.key === a.key), d, key: a.key}; });
+  else lblEls = M.els.map(e => { const d = document.createElement('div'); d.className = 'lbl'; const h = e.kind === 'ЛЮК' ? Math.round(M.Hl * 1000) : (M.dims[e.mark] ? M.dims[e.mark].h : Math.round((e.z1 - e.z0) * 1000));
     d.innerHTML = e.kind === 'РШ' ? `${esc(e.mark)}<small>рамка 620×620, ${KC.fmt(M.cat[e.mark] ? M.cat[e.mark].kg : KC.GRATE.kg, 1)} кг</small>` : `${esc(e.mark)}${e.q > 1 ? ' ×' + e.q : ''}<small>h ${h}${e.q > 1 ? ' ×' + e.q : ''} мм</small>`; lab.appendChild(d); return {e, d}; });
   // выноски гидроизоляции — слева от колодца
   coatLbl = [['tape', 'ЛЕНТА', 'гидроизол, 2 слоя'], ['coat', 'БИТУМ', 'горячий, 5 мм']].map(([k, t, sm]) => { const d = document.createElement('div'); d.className = 'lbl l' + (k === 'tape' ? ' tp' : ''); d.innerHTML = `${t}<small>${sm}</small>`; lab.appendChild(d); return {k, d}; });
@@ -217,12 +227,14 @@ function loop(now) {
   // подписи
   const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion); const rl = Math.hypot(right.x, right.y) || 1;
   const st = stepIdx >= 0 ? steps[stepIdx] : null, done = st ? new Set(steps.slice(0, stepIdx + 1).flatMap(x => x.els)) : null;
-  const pos = [];
+  const pos = [], VA = isVV() ? VV.labelAnchors(M, [right.x / rl, right.y / rl]) : null;
   lblEls.forEach(({e, d}, i) => {
     const vis = showLbl && !inside && (anim ? anim.lbl.has(e.key) : st && st.pre ? elKeys.has(e.key) : (!done || done.has(e.key)));
     if (!vis) { d.style.display = 'none'; return; }
-    const r = e.kind === 'ПД' ? 1.0 : e.rout, z = (e.z0 + e.z1) / 2 + expT * .32 * i;
-    const p = new THREE.Vector3(e.cx + right.x / rl * r, e.cy + right.y / rl * r, z).project(camera);
+    let p;
+    if (VA) { const a = VA.find(x => x.key === e.key); p = new THREE.Vector3(a.p[0], a.p[1], a.p[2] + expT * .32 * M.lvlOf(e.key)).project(camera); }
+    else { const r = e.kind === 'ПД' ? 1.0 : e.rout, z = (e.z0 + e.z1) / 2 + expT * .32 * i;
+    p = new THREE.Vector3(e.cx + right.x / rl * r, e.cy + right.y / rl * r, z).project(camera); }
     if (p.z > 1) { d.style.display = 'none'; return; }
     d.style.display = ''; pos.push({d, x: (p.x + 1) / 2 * W, y: (1 - p.y) / 2 * H});
     d.classList.toggle('hi', !!(st && st.els.includes(e.key)));
@@ -241,13 +253,14 @@ function loop(now) {
   const iu = $('#inui'); if (!iu.hidden) iu.style.bottom = ($('.tools').offsetHeight + 16) + 'px';
 }
 /* ---------- вид изнутри: стоим на полке лотка, осматриваемся; ▲▼ — по скобам, вплоть до люка ---------- */
-const inPos = z => new THREE.Vector3(M.gx * .75, M.gy * .75, z);   // под лазом: из рабочей части прямо в горловину
+const inPos = z => { if (isVV()) { const g = M.hatches[0], [x, y] = VV.toW(M, g.x - .22 * Math.cos(g.ga), g.y - .22 * Math.sin(g.ga)); return new THREE.Vector3(x, y, z); } return new THREE.Vector3(M.gx * .75, M.gy * .75, z); };   // под лазом: из рабочей части прямо в горловину
+const gW = () => { const g = M.hatches ? M.hatches[0] : null; return g && isVV() ? VV.toW(M, g.x, g.y) : [M.gx, M.gy]; };
 const inLim = () => [M.hb + .35, M.ztop + .3];
 function inHint() {
   if (!inside) return '';
   if (inside.z > M.ztop) return 'Выглянули из люка — оглянитесь вокруг. ▼ — обратно в колодец.';
   if (inside.z > M.V + M.hpp) return 'Горловина: кольца, швы, скобы. ▲ — к открытому люку, ▼ — вниз.';
-  return 'Вы внутри колодца, над головой — открытый люк. Потяните, чтобы осмотреться: внизу лоток и трубы. ▲▼ — по скобам.';
+  return `Вы внутри колодца, над головой — открытый люк. Потяните, чтобы осмотреться: внизу ${isVV() ? 'трубы' : 'лоток и трубы'}. ▲▼ — по скобам.`;
 }
 function setFog(f) {   // туман меняет шейдеры — пересобрать материалы
   if (SC.scene.fog === f) return; SC.scene.fog = f;
@@ -262,16 +275,16 @@ function setInside(on) {
     // внутри темнее: фонарик у глаз и дневной свет из открытого люка
     for (const o of SC.scene.children) if (o.isLight) { inside.light.push([o, o.intensity]); o.intensity *= o.isHemisphereLight ? .3 : .12; }
     inside.head = new THREE.PointLight(0xfff0d6, 1.25, 6, 2); camera.add(inside.head); SC.scene.add(camera);   // фонарик: ближе — светлее, дальше — темнее
-    inside.sky = new THREE.PointLight(0xe3f0ff, 1.1, 5, 2); inside.sky.position.set(M.gx, M.gy, M.ztop + .5); SC.scene.add(inside.sky);
+    inside.sky = new THREE.PointLight(0xe3f0ff, 1.1, 5, 2); inside.sky.position.set(...gW(), M.ztop + .5); SC.scene.add(inside.sky);
     inside.fog = new THREE.Fog(0x15181c, 1.2, 6.5);
     // площадка вокруг до горизонта — чтобы, выглянув из люка, видеть землю, а не пустоту
     inside.ground = new THREE.Mesh(new THREE.RingGeometry(Math.max(.5, M.surfR - .01), 45, 96), new THREE.MeshStandardMaterial({color: 0x8d9a6c, roughness: 1, side: THREE.DoubleSide}));
-    inside.ground.position.set(M.gx, M.gy, M.zg - .012); SC.scene.add(inside.ground);
+    { const c = isVV() ? VV.toW(M, 0, 0) : [M.gx, M.gy]; inside.ground.position.set(c[0], c[1], M.zg - .012); } SC.scene.add(inside.ground);
     renderer.setClearColor(new THREE.Color(0xbcd8ee), 1);
     const asp = camera.aspect || 1; camera.fov = Math.min(100, Math.max(70, 2 * Math.atan(Math.tan(42 * Math.PI / 180) / asp) * 180 / Math.PI)); camera.near = .02; camera.updateProjectionMatrix();   // на узком экране телефона — шире угол
     controls.enableZoom = false; controls.enablePan = false; controls.rotateSpeed = -.38;
     // первый взгляд — вверх, на открытый люк и небо; чуть в сторону дальней стенки, чтобы видеть ствол колодца
-    const p = inPos(z), d = new THREE.Vector3(M.gx - p.x - Math.cos(M.go) * .45, M.gy - p.y - Math.sin(M.go) * .45, M.ztop - z).normalize();
+    const [gx, gy] = gW(), p = inPos(z), d = new THREE.Vector3(gx - p.x - Math.cos(M.go) * .45, gy - p.y - Math.sin(M.go) * .45, M.ztop - z).normalize();
     camera.position.copy(p); controls.target.copy(p.clone().add(d.multiplyScalar(.05))); controls.update();
     setFog(inside.fog);
   } else if (!on && inside) {
@@ -337,6 +350,11 @@ function rigMake() {
 // куда цеплять стропы: центр, верх элемента и точки строповки (относительно центра)
 function rigOf(key) {
   const e = M.els.find(x => x.key === key), pts = (r, n = 4, a0 = Math.PI / 4) => Array.from({length: n}, (_, i) => [r * Math.cos(a0 + i * 2 * Math.PI / n), r * Math.sin(a0 + i * 2 * Math.PI / n)]);
+  if (isVV()) { if (!e) return null;
+    if (e.x0 !== undefined) { const [cx, cy] = VV.toW(M, (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2), hx = (e.x1 - e.x0) * .35, hy = (e.y1 - e.y0) * .35; return {cx, cy, top: e.z1, pts: [[hx, hy], [-hx, hy], [-hx, -hy], [hx, -hy]].map(([x, y]) => VV.toW(M, x, y))}; }
+    const [cx, cy] = VV.toW(M, e.cx || 0, e.cy || 0);
+    if (e.kind === 'ПД') { const a = M.go + (e.ga || 0), c = Math.cos(a), s = Math.sin(a); return {cx, cy, top: e.z1, pts: [[1.05, .7], [-1.05, .7], [-1.05, -.7], [1.05, -.7]].map(([x, y]) => [x * c - y * s, x * s + y * c])}; }
+    return {cx, cy, top: e.z1, pts: pts(e.kind === 'ПН' ? e.rout * .62 : e.kind === 'ПП' || e.kind === 'П10' ? e.rout * .7 : e.rin ? (e.rin + e.rout) / 2 : .4)}; }
   if (e) {
     if (e.kind === 'ПН') return {cx: 0, cy: 0, top: e.z1, pts: pts(e.rout * .62)};
     if (e.kind === 'КС') return {cx: 0, cy: 0, top: e.z1, pts: pts((e.rin + e.rout) / 2)};
@@ -350,7 +368,44 @@ function rigOf(key) {
   return {cx: u[0] * d, cy: u[1] * d, top: p.z1, pts: [[t[0] * b, t[1] * b], [-t[0] * b, -t[1] * b]]};
 }
 // план шага: дорожки (что и когда двигается) и длительность
+// В1: монолитные стены «растут» (бетонируются), скобы стен ставятся в опалубку, плиты перекрытия — одна за другой, быстрее
+function animPlanVV(i) {
+  const st = steps[i], cur = new Set(st.els), T = []; let t = 0;
+  const ms = k => SC.meshes.filter(m => m.userData.key === k);
+  if (st.pre) { T.push({type: 'paint', t0: .7, d: 3.0}); return {T, dur: 4.6}; }
+  if (st.fin) return {T, dur: 7, orbit: true};
+  const msAll = SC.meshes.filter(m => /^ms\d/.test(m.userData.key) && cur.has(m.userData.key));
+  const elK = st.els.filter(k => k !== 'wall' && M.els.some(e => e.key === k));
+  const e0 = M.els.find(e => elK.includes(e.key)), zSplit = e0 ? e0.z0 + .03 : 1e9;
+  const msBefore = msAll.filter(m => m.userData.z0 <= zSplit), msAfter = msAll.filter(m => m.userData.z0 > zSplit);
+  if (msBefore.length) { T.push({type: 'drop', ms: msBefore, dz: .5, t0: 0, d: .7, hide: true}); t = .85; }
+  if (cur.has('base')) { T.push({type: 'grow', ms: ms('base'), pivot: M.zBase, t0: 0, d: 1.4}); t = 1.4; }
+  if (cur.has('pipe')) { T.push({type: 'slide', ms: ms('pipe'), d0: 1.6, t0: 0, d: 1.6}); t = 1.6; }
+  if (cur.has('skw')) { const g = new Map(); for (const m of SC.meshes) if (m.userData.key === 'sk' && m.userData.of === 'skw') { const z = Math.round(m.userData.z0 * 100); if (!g.has(z)) g.set(z, []); g.get(z).push(m); }
+    [...g.keys()].sort((a, b) => a - b).forEach((z, j) => T.push({type: 'drop', ms: g.get(z), dz: .22, t0: j * .18, d: .3, hide: true})); t = g.size * .18 + .5; }
+  if (cur.has('wall')) { T.push({type: 'grow', ms: SC.meshes.filter(m => m.userData.key === 'wall'), pivot: 0, t0: 0, d: 2.4}); t = 2.5; }
+  const many = elK.length > 2; let land = t;
+  elK.forEach((k, n) => {
+    const e = M.els.find(x => x.key === k), body = SC.meshes.filter(m => m.userData.key === k || (m.userData.key === 'coat' && m.userData.of === k));
+    if (e.kind === 'КО') { const g = new Map(); for (const m of body) { const j = Math.max(0, Math.round((zMinOf(m) - e.z0) / .08)); if (!g.has(j)) g.set(j, []); g.get(j).push(m); }
+      [...g.keys()].sort((a, b) => a - b).forEach((j, q) => T.push({type: 'drop', ms: g.get(j), dz: .55, t0: t + q * .4, d: .5, hide: true})); land = t + (g.size - 1) * .4 + .5; t = many ? t + .5 : land; return; }
+    if (e.kind === 'ЛЮК') { T.push({type: 'drop', ms: body, dz: .7, t0: t, d: .9, hide: true}); land = t + .9; t = many ? t + .5 : land; return; }
+    const dz = Math.max(1.4, M.ztop + 1.1 - e.z0), d = many ? 1.1 : Math.min(3.2, 1.3 + .22 * dz);
+    T.push({type: 'drop', ms: body, dz, t0: t, d, hide: true, rig: many && n > 0 ? null : rigOf(k)}); land = t + d; t = many ? t + .55 : land; });
+  t = Math.max(t, land);
+  if (elK.length) {
+    if (msAfter.length) { T.push({type: 'drop', ms: msAfter, dz: .5, t0: land + .2, d: .6, hide: true}); t = Math.max(t, land + .8); }
+    T.push({type: 'label', keys: elK, t0: land});
+    const g = new Map(); for (const m of SC.meshes) if (m.userData.key === 'sk' && elK.includes(m.userData.of)) { const z = Math.round(m.userData.z0 * 100); if (!g.has(z)) g.set(z, []); g.get(z).push(m); }
+    if (g.size) { const tc = t + .2, sk0 = cut ? tc : tc + .9; if (!cut) T.push({type: 'cut', t0: tc});
+      [...g.keys()].sort((a, b) => a - b).forEach((z, j) => T.push({type: 'drop', ms: g.get(z), dz: .22, t0: sk0 + j * .3, d: .35, hide: true})); t = sk0 + (g.size - 1) * .3 + .65; }
+  }
+  if (cur.has('wall')) T.push({type: 'label', keys: ['wall'], t0: 1.2});
+  if (cur.has('surf')) { T.push({type: 'grow', ms: ms('surf'), pivot: Math.min(...ms('surf').map(zMinOf)), t0: t + .1, d: 1.1, hide: true}); t += 1.2; }
+  return {T, dur: t + 1.35};
+}
 function animPlan(i) {
+  if (isVV()) return animPlanVV(i);
   const st = steps[i], cur = new Set(st.els), T = []; let t = 0;
   const ms = k => SC.meshes.filter(m => m.userData.key === k);
   if (st.pre) { T.push({type: 'paint', t0: .7, d: 3.0}); return {T, dur: 4.6}; }
@@ -427,7 +482,7 @@ function animGo(i) {
   box.min.z = Math.min(box.min.z, M.zBase); box.max.z += st.pre || st.fin ? .1 : .55;
   const R0 = Math.max(M.Rout, (M.pnR || 0) + .1); box.expandByPoint(new THREE.Vector3(-R0, -R0, box.min.z)); box.expandByPoint(new THREE.Vector3(R0, R0, box.min.z));
   if (st.pre) box.max.z = M.ztop + 1.4 * .32 * (M.els.length + 1);
-  anim.goal = box; anim.azCut = M.go - Math.PI / 2 - .4; anim.azSk = M.go + Math.PI + .35;
+  anim.goal = box; anim.azCut = isVV() ? VV.azCut(M) : M.go - Math.PI / 2 - .4; anim.azSk = isVV() ? VV.azCut(M) : M.go + Math.PI + .35;
   animApply(0);
 }
 function animUi() {
@@ -497,7 +552,30 @@ function animTick(now) {
   camera.position.lerp(goal, k); controls.target.lerp(c, k);
   needs = true;
 }
+function buildPanelVV(w) {
+  const mm = v => Math.round(v * 1000), g0 = M.hatches[0], nG = M.hatches.length;
+  const chips = ['В1', M.rect ? `${S(w, 'pk')} ${N(w, 'A')}×${N(w, 'B')}` : `Ø${mm(M.D)}`, `Ду${mm(M.Du)}${M.du ? ' + ду' + mm(M.du) : ''}`, KC.PLACE[M.place] || '', 'люк ' + S(w, 'hatch') + (nG > 1 ? ' ×' + nG : '')].filter(Boolean).map(c => `<span class="chip">${esc(c)}</span>`)
+    .concat(M.g1000 ? ['<span class="chip">горловина Ø1000</span>'] : [], M.pg ? ['<span class="chip">ПГ</span>'] : [], M.seis ? [`<span class="chip ms">сейсмика ${esc(S(w, 'seism'))} б.</span>`] : []);
+  const dimsOf = m => { const d = M.dims[m]; if (d) { const a = d.din ? `Ø${d.din}/` : ''; const b = /×/.test(d.dout) ? d.dout : (d.din ? d.dout : 'Ø' + d.dout); return `${a}${b}×${d.h}`; }
+    const r = VV.RE[m]; return r ? (/^Б\d/.test(m) ? `${r[0]}×${r[2]}, L ${r[1]}` : `${r[0]}×${r[1]}×${r[2]}`) : /^Решётка/.test(m) ? 'рамка 620×620' : ''; };
+  const msgs = [S(w, 'msg')].concat(M.warn).filter(x => x && x !== 'ОК');
+  $('#panel').innerHTML = `
+    <div class="chips">${chips.join('')}</div>
+    <dl class="facts"><dt>Глубина до низа трубы</dt><dd>${fmt(N(w, 'H'))} м</dd><dt>Рабочая часть</dt><dd>${fmt(M.V)} м${M.rect ? ` · стены ${mm(M.t)} мм` : ''}</dd><dt>Горловина с плитой</dt><dd>${fmt(g0.ztop - M.V)} м</dd>
+      <dt>Верх люка</dt><dd>${sgn(g0.ztop - M.zg)} м от земли</dd><dt>Самый тяжёлый</dt><dd>${M.heavy ? esc(M.heavy.mark) + ' · ' + fmt(M.heavy.kg / 1000) + ' т' : '—'}</dd><dt>Масса сборных и люков</dt><dd>${fmt(M.total / 1000)} т</dd></dl>
+    <div><h2>Элементы</h2><table><thead><tr><th>Марка</th><th>Размеры, мм</th><th class="r">Шт.</th><th class="r">кг</th></tr></thead><tbody>
+      ${M.rows.map(r => `<tr><td>${esc(r.mark)}</td><td>${esc(dimsOf(r.mark))}</td><td class="r">${r.q}</td><td class="r">${Math.round(r.q * r.kg)}</td></tr>`).join('')}</tbody></table></div>
+    ${M.rect ? `<div><h2>Перекрытие ${esc(M.pk)}</h2><table><tbody><tr><td>Плит</td><td class="r">${M.plates.length}${M.beams.length ? ` · балок Б8 ${M.beams.length}` : ''}</td></tr>
+      <tr><td>Раскладка</td><td class="r">по плану Альбома IV (АС-8…12)</td></tr>${M.lay.type === 'S' ? `<tr><td>Ширины плит / длина камеры</td><td class="r">${mm(M.lay.sum)} / ${N(w, 'A')} мм</td></tr>` : ''}</tbody></table></div>` : ''}
+    <div><h2>Основание и гидроизоляция</h2><table><tbody>
+      <tr><td>Основание (${esc(M.gruntName.split(' — ')[0])})</td><td class="r">${M.base.map(b => esc(b.n)).join('<br>')}${M.zamok ? '<br>водоупорный замок' : ''}</td></tr>
+      <tr><td>Снаружи</td><td class="r">горячий битум, ${fmt(N(w, 'gout'))} м²</td></tr><tr><td>Внутри</td><td class="r">${fmt(N(w, 'gin'))} м²</td></tr></tbody></table>
+      <div class="note">ТПР 901-09-11.84, Альбом ${M.rect ? 'IV' : 'II'}, лист АС-1. Арматура (задвижки, фасонные части) в 3D пока не показана.</div></div>
+    <div class="msg ${msgs.length ? 'bad' : ''}">Проверка: ${msgs.length ? msgs.map(esc).join('; ') : 'ОК'}</div>
+    <div class="note">Модель построена по данным таблицы «Авто Колодцы В1», переданным в ссылке. Демонстрационная версия KOLSB.</div>`;
+}
 function buildPanel(w, obj) {
+  if (isVV()) return buildPanelVV(w);
   const mm = v => Math.round(v * 1000), nR = M.rings.length;
   const rsum = M.rings.reduce((s, r) => s + (r.z1 - r.z0) + KC.SEAM, 0), gW = M.ztop - M.V;
   const chips = [`Ø${Math.round(M.D * 1000)}`, `Ду${Math.round(M.Du * 1000)}`, KC.PLACE[M.place] || '', 'люк ' + S(w, 'hatch')].filter(Boolean).map(c => `<span class="chip">${esc(c)}</span>`)
