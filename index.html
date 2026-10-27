@@ -35,6 +35,10 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:14px/1
 .btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .stepcard{position:absolute;left:max(10px,env(safe-area-inset-left));right:max(10px,env(safe-area-inset-right));bottom:calc(max(10px,env(safe-area-inset-bottom)) + 56px);background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;box-shadow:0 6px 24px rgba(0,0,0,.16);display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center}
 .stepcard[hidden]{display:none}
+.inui{position:absolute;left:max(10px,env(safe-area-inset-left));right:max(10px,env(safe-area-inset-right));bottom:calc(max(10px,env(safe-area-inset-bottom)) + 56px);background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px 10px;box-shadow:0 6px 24px rgba(0,0,0,.16);display:flex;gap:10px;align-items:center;justify-content:space-between}
+.inui[hidden]{display:none}
+.inui .hint{font-size:13px;line-height:1.3}
+.inui .nav{display:flex;gap:6px;flex:none}
 .stepcard .n{font:800 22px var(--f);color:var(--accent);min-width:1.6em;text-align:center}
 .stepcard b{display:block;font-size:15.5px;line-height:1.2}
 .stepcard .fc{font-size:12px;color:var(--muted)}
@@ -91,11 +95,14 @@ tr.sum td{font-weight:700;background:var(--surface-2)} tr.sum td.ok{color:var(--
       <div><b id="ct"></b><div class="fc" id="cf"></div><ul id="cu"></ul><div class="chk" id="cc"></div></div>
       <div class="nav"><button class="btn main" id="next" aria-label="Следующий шаг">▶</button><button class="btn" id="prev" aria-label="Предыдущий шаг">◀</button></div>
     </div>
+    <div class="inui" id="inui" hidden><div class="hint" id="inHint"></div>
+      <div class="nav"><button class="btn" id="inUp" aria-label="Выше по скобам">▲</button><button class="btn" id="inDn" aria-label="Ниже по скобам">▼</button></div></div>
     <div class="tools">
       <button class="btn main" id="bSteps" aria-pressed="false">Как собрать</button>
       <button class="btn" id="bCut" aria-pressed="false">Разрез</button>
       <button class="btn" id="bExp" aria-pressed="false">Разобрать</button>
       <button class="btn" id="bCoat" aria-pressed="false">Гидроизоляция</button>
+      <button class="btn" id="bIn" aria-pressed="false">Изнутри</button>
       <button class="btn" id="bLbl" aria-pressed="true">Подписи</button>
       <button class="btn" id="bReset">Вид</button>
       <button class="btn sheetbtn" id="bInfo">Данные</button>
@@ -112,17 +119,17 @@ tr.sum td{font-weight:700;background:var(--surface-2)} tr.sum td.ok{color:var(--
 const DEMO = 'k1VY8xTgMxEEWvEk39Y83Ya6-9OUHOEKVAoqejwUgRJQVNuiCyIlwgFBEogpxh9kbIG202SJbleWPP-36ge2oEdEPNgiGRl6A7akjbbqXf-qOHbjXRk352z3rQY_ekewLdUrMgITBIN_quH1MhVIYdxHg45r6zJpDuyrbWvX7pSX8JbMSCDXsw2FTg8i7CGQc20cEXHOpyz4O01TfxdNaIN2k8BoKDgERbbcVPbYkjhZX5VsCmDqiCiRATIuygjglsfEIfkgZHlpw8zwZPdlmYL3XIkkPg2UVW6nhu18ZlyeL6ahuyy2XOa_eix4nuSkvCqMmWmbPYK5X4QkLkHNO18YJ9ujbXAxY_BigwVpxtGmL4eCY1ExIiSLe6IdB8ThAxzvef_7eWj38';
 const $ = s => document.querySelector(s);
 const {fmt, sgn, esc, N, S} = KC;
-let coatLbl = [], showCoat = false, M, SC, renderer, camera, controls, steps, stepIdx = -1, cut = false, expT = 0, expTarget = 0, showLbl = true, lblEls = [], needs = true;
+let coatLbl = [], elKeys = new Set(), stepExp = false, inside = null, showCoat = false, M, SC, renderer, camera, controls, steps, stepIdx = -1, cut = false, expT = 0, expTarget = 0, showLbl = true, lblEls = [], needs = true;
 
 function theme() { try { const t = localStorage.getItem('kolsb-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {} }
 theme();
 $('#bTheme').onclick = () => { const cur = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); const n = cur === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = n; try { localStorage.setItem('kolsb-theme', n); } catch (e) {} setBg(); needs = true; };
-function setBg() { if (renderer) renderer.setClearColor(new THREE.Color(getComputedStyle(document.documentElement).getPropertyValue('--stage').trim() || '#dfe3e5'), 1); }
+function setBg() { if (renderer) renderer.setClearColor(new THREE.Color(inside ? '#bcd8ee' : (getComputedStyle(document.documentElement).getPropertyValue('--stage').trim() || '#dfe3e5')), 1); needs = true; }
 
 async function start(payload) {
   const {w, angsDeg, obj} = await KC.unpack(payload);
   M = KC.model(w, angsDeg.map(d => d * Math.PI / 180));
-  steps = KC.stepsOf(M);
+  steps = KC.stepsOf(M); elKeys = new Set(M.els.filter(e => e.kind !== 'ЛЮК' && e.kind !== 'ПД').map(e => e.key));
   $('#land').hidden = true; $('#app').hidden = false;
   document.title = `Колодец №${w.nom} — 3D`;
   $('#ttl').innerHTML = `Колодец <b>№${esc(w.nom)}</b>`;
@@ -164,16 +171,22 @@ function applyState() {
   const st = stepIdx >= 0 ? steps[stepIdx] : null;
   const done = st ? new Set(steps.slice(0, stepIdx + 1).flatMap(x => x.els)) : null, cur = st ? new Set(st.els) : null;
   for (const m of SC.mats) m.clippingPlanes = cut ? [SC.plane] : [];
+  // шаг «битум до сборки»: все элементы на земле, разнесены, уже чёрные
+  if (st && st.pre) { if (expTarget === 0) { expTarget = 1.4; stepExp = true; } } else if (stepExp) { expTarget = 0; stepExp = false; }
+  const fin = done && done.has('coatfin');
   for (const m of SC.meshes) {
-    const k = m.userData.key;
-    let v = (m.userData.cap ? cut : true) && (!done || done.has(k));
-    if ((k === 'coat' || k === 'tape') && !done && !showCoat) v = false;
-    if (/^ms\d/.test(k) && !cut && (showCoat || (done && done.has('coat')))) v = false;   // МС — под мастикой и лентой
+    const k = m.userData.key, ud = m.userData;
+    let v = (ud.cap ? cut : true);
+    if (st && st.pre) v = v && (k === 'coat' ? !!ud.of && elKeys.has(ud.of) : elKeys.has(k));
+    else if (done) v = v && (k === 'coat' ? done.has('coat') && done.has(ud.of) : k === 'tape' ? done.has(ud.of) : done.has(k));   // битум — с самого начала, лента — сразу после элемента над стыком
+    else if ((k === 'coat' || k === 'tape') && !showCoat) v = false;
+    if (/^ms\d/.test(k) && !cut && (showCoat || fin)) v = false;   // МС снаружи — под битумом
     if (k === 'surf' && showCoat && !done) v = false;   // гидроизоляция: покрытие у люка убираем, чтобы была видна горловина
+    if (inside && (ud.part === 'lid' || k === 'coat' || k === 'tape')) v = false;   // изнутри: крышка люка открыта — сверху небо
     m.visible = !!v;
-    if (m.isMesh && !m.userData.line) m.material = (st && !st.nohi && cur.has(k)) ? SC.hiMat : m.userData.base;
+    if (m.isMesh && !ud.line) m.material = (st && !st.nohi && (cur.has(k) || (k === 'coat' && ud.of && cur.has(ud.of)))) ? SC.hiMat : ud.base;
   }
-  $('#bCut').setAttribute('aria-pressed', cut); $('#bExp').setAttribute('aria-pressed', expTarget > 0); $('#bLbl').setAttribute('aria-pressed', showLbl); $('#bSteps').setAttribute('aria-pressed', stepIdx >= 0); $('#bCoat').setAttribute('aria-pressed', showCoat);
+  $('#bCut').setAttribute('aria-pressed', cut); $('#bExp').setAttribute('aria-pressed', expTarget > 0); $('#bLbl').setAttribute('aria-pressed', showLbl); $('#bSteps').setAttribute('aria-pressed', stepIdx >= 0); $('#bCoat').setAttribute('aria-pressed', showCoat); $('#bIn').setAttribute('aria-pressed', !!inside); $('#inui').hidden = !inside; if (inside) $('#inHint').textContent = inHint();
   const card = $('#card'); card.hidden = !st;
   if (st) { $('#cn').textContent = stepIdx + 1; $('#ct').textContent = st.t; $('#cf').textContent = `${st.fc ? st.fc + ' · ' : ''}шаг ${stepIdx + 1} из ${steps.length}`;
     $('#cu').innerHTML = st.todo.map(t => `<li>${esc(t)}</li>`).join(''); $('#cc').textContent = st.chk ? '✓ ' + st.chk : ''; }
@@ -192,7 +205,7 @@ function loop() {
   const st = stepIdx >= 0 ? steps[stepIdx] : null, done = st ? new Set(steps.slice(0, stepIdx + 1).flatMap(x => x.els)) : null;
   const pos = [];
   lblEls.forEach(({e, d}, i) => {
-    const vis = showLbl && (!done || done.has(e.key));
+    const vis = showLbl && !inside && (st && st.pre ? elKeys.has(e.key) : (!done || done.has(e.key)));
     if (!vis) { d.style.display = 'none'; return; }
     const r = e.kind === 'ПД' ? 1.0 : e.rout, z = (e.z0 + e.z1) / 2 + expT * .32 * i;
     const p = new THREE.Vector3(e.cx + right.x / rl * r, e.cy + right.y / rl * r, z).project(camera);
@@ -200,7 +213,7 @@ function loop() {
     d.style.display = ''; pos.push({d, x: (p.x + 1) / 2 * W, y: (1 - p.y) / 2 * H});
     d.classList.toggle('hi', !!(st && st.els.includes(e.key)));
   });
-  { const coatOn = showLbl && !cut && expT < .02 && ((showCoat && !done) || (done && done.has('tape')));
+  { const coatOn = showLbl && !inside && !cut && expT < .02 && ((showCoat && !done) || (done && done.has('coatfin')));
     const tr = M.tapes.filter(t => t.part === 'r'), tp = tr[Math.min(3, tr.length - 1)] || M.tapes[0], rg = M.rings[Math.min(1, M.rings.length - 1)] || M.rings[0], R = M.Rout + .012;
     let yPrev = -1e9;
     for (const {k, d} of coatLbl) { if (!coatOn || !tp) { d.style.display = 'none'; continue; }
@@ -210,16 +223,77 @@ function loop() {
   pos.sort((a, b) => a.y - b.y); let yl = -1e9;
   for (const q of pos) { const y = Math.max(q.y, yl + 30); yl = y; q.d.style.left = q.x + 'px'; q.d.style.top = y + 'px'; }
   const card = $('#card'); if (!card.hidden) card.style.bottom = ($('.tools').offsetHeight + 16) + 'px';
+  const iu = $('#inui'); if (!iu.hidden) iu.style.bottom = ($('.tools').offsetHeight + 16) + 'px';
+}
+/* ---------- вид изнутри: стоим на полке лотка, осматриваемся; ▲▼ — по скобам, вплоть до люка ---------- */
+const inPos = z => new THREE.Vector3(M.gx * .75, M.gy * .75, z);   // под лазом: из рабочей части прямо в горловину
+const inLim = () => [M.hb + .35, M.ztop + .3];
+function inHint() {
+  if (!inside) return '';
+  if (inside.z > M.ztop) return 'Выглянули из люка — оглянитесь вокруг. ▼ — обратно в колодец.';
+  if (inside.z > M.V + M.hpp) return 'Горловина: кольца, швы, скобы. ▲ — к открытому люку, ▼ — вниз.';
+  return 'Вы внутри колодца, над головой — открытый люк. Потяните, чтобы осмотреться: внизу лоток и трубы. ▲▼ — по скобам.';
+}
+function setFog(f) {   // туман меняет шейдеры — пересобрать материалы
+  if (SC.scene.fog === f) return; SC.scene.fog = f;
+  SC.scene.traverse(o => { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { m.needsUpdate = true; }); });
+  for (const m of SC.mats) m.needsUpdate = true;
+}
+function setInside(on) {
+  if (on && !inside) {
+    stepIdx = -1; cut = false; expTarget = 0; expT = 0; KC.explode(SC, 0); showCoat = false;
+    const z = Math.max(inLim()[0], Math.min(M.hb + 1.3, M.V - .45));   // стоим на полке лотка; в мелком колодце — пригнувшись
+    inside = {pos: camera.position.clone(), target: controls.target.clone(), fov: camera.fov, near: camera.near, z, light: []};
+    // внутри темнее: фонарик у глаз и дневной свет из открытого люка
+    for (const o of SC.scene.children) if (o.isLight) { inside.light.push([o, o.intensity]); o.intensity *= o.isHemisphereLight ? .3 : .12; }
+    inside.head = new THREE.PointLight(0xfff0d6, 1.25, 6, 2); camera.add(inside.head); SC.scene.add(camera);   // фонарик: ближе — светлее, дальше — темнее
+    inside.sky = new THREE.PointLight(0xe3f0ff, 1.1, 5, 2); inside.sky.position.set(M.gx, M.gy, M.ztop + .5); SC.scene.add(inside.sky);
+    inside.fog = new THREE.Fog(0x15181c, 1.2, 6.5);
+    // площадка вокруг до горизонта — чтобы, выглянув из люка, видеть землю, а не пустоту
+    inside.ground = new THREE.Mesh(new THREE.RingGeometry(Math.max(.5, M.surfR - .01), 45, 96), new THREE.MeshStandardMaterial({color: 0x8d9a6c, roughness: 1, side: THREE.DoubleSide}));
+    inside.ground.position.set(M.gx, M.gy, M.zg - .012); SC.scene.add(inside.ground);
+    renderer.setClearColor(new THREE.Color(0xbcd8ee), 1);
+    const asp = camera.aspect || 1; camera.fov = Math.min(100, Math.max(70, 2 * Math.atan(Math.tan(42 * Math.PI / 180) / asp) * 180 / Math.PI)); camera.near = .02; camera.updateProjectionMatrix();   // на узком экране телефона — шире угол
+    controls.enableZoom = false; controls.enablePan = false; controls.rotateSpeed = -.38;
+    // первый взгляд — вверх, на открытый люк и небо; чуть в сторону дальней стенки, чтобы видеть ствол колодца
+    const p = inPos(z), d = new THREE.Vector3(M.gx - p.x - Math.cos(M.go) * .45, M.gy - p.y - Math.sin(M.go) * .45, M.ztop - z).normalize();
+    camera.position.copy(p); controls.target.copy(p.clone().add(d.multiplyScalar(.05))); controls.update();
+    setFog(inside.fog);
+  } else if (!on && inside) {
+    for (const [o, i] of inside.light) o.intensity = i;
+    setFog(null);
+    camera.remove(inside.head); SC.scene.remove(camera); SC.scene.remove(inside.sky); SC.scene.remove(inside.ground); inside.ground.geometry.dispose(); inside.ground.material.dispose();
+    camera.fov = inside.fov; camera.near = inside.near; camera.updateProjectionMatrix();
+    controls.enableZoom = true; controls.enablePan = true; controls.rotateSpeed = 1;
+    inside = null; setBg(); resetView();
+  }
+  applyState();
+}
+function inMove(dz) {
+  if (!inside) return;
+  const [a, b] = inLim(), z = Math.max(a, Math.min(b, inside.z + dz)), off = controls.target.clone().sub(camera.position);
+  const up = inside.z < M.zg && z >= M.zg;   // выглянули из люка — взгляд к горизонту
+  inside.z = z; const p = inPos(z); camera.position.copy(p);
+  if (up) { const h = Math.hypot(off.x, off.y) > 1e-4 ? new THREE.Vector3(off.x, off.y, 0).normalize() : new THREE.Vector3(Math.cos(M.go), Math.sin(M.go), 0); off.copy(h.add(new THREE.Vector3(0, 0, -.12)).normalize().multiplyScalar(.05)); }
+  controls.target.copy(p.clone().add(off)); controls.update();
+  setFog(z < M.zg ? inside.fog : null);   // в колодце — полумрак, наверху — ясный день
+  $('#inHint').textContent = inHint(); needs = true;
 }
 function frame() {
-  $('#bCut').onclick = () => { cut = !cut; applyState(); };
-  $('#bExp').onclick = () => { expTarget = expTarget > 0 ? 0 : 1; applyState(); };
+  const out = () => { if (inside) setInside(false); };
+  // шаги: элементы — снаружи (битум и лента видны), трубы, лоток, скобы — в разрезе
+  const stepCut = () => { const st = steps[stepIdx]; cut = !!st && !st.pre && !st.fin && !st.kind; };
+  $('#bCut').onclick = () => { out(); cut = !cut; applyState(); };
+  $('#bExp').onclick = () => { out(); expTarget = expTarget > 0 ? 0 : 1; applyState(); };
   $('#bLbl').onclick = () => { showLbl = !showLbl; applyState(); };
-  $('#bCoat').onclick = () => { showCoat = !showCoat; applyState(); };
-  $('#bReset').onclick = () => resetView(stepIdx >= 0);
-  $('#bSteps').onclick = () => { if (stepIdx >= 0) { stepIdx = -1; applyState(); resetView(); } else { stepIdx = 0; cut = true; expTarget = 0; applyState(); resetView(true); } };
-  $('#next').onclick = () => { stepIdx = Math.min(steps.length - 1, stepIdx + 1); applyState(); resetView(true); };
-  $('#prev').onclick = () => { stepIdx = Math.max(0, stepIdx - 1); applyState(); resetView(true); };
+  $('#bCoat').onclick = () => { out(); showCoat = !showCoat; applyState(); };
+  $('#bIn').onclick = () => setInside(!inside);
+  $('#inUp').onclick = () => inMove(.3);
+  $('#inDn').onclick = () => inMove(-.3);
+  $('#bReset').onclick = () => { if (inside) setInside(false); else resetView(stepIdx >= 0); };
+  $('#bSteps').onclick = () => { out(); if (stepIdx >= 0) { stepIdx = -1; cut = false; applyState(); resetView(); } else { stepIdx = 0; stepCut(); expTarget = 0; applyState(); resetView(true); } };
+  $('#next').onclick = () => { stepIdx = Math.min(steps.length - 1, stepIdx + 1); stepCut(); applyState(); resetView(true); };
+  $('#prev').onclick = () => { stepIdx = Math.max(0, stepIdx - 1); stepCut(); applyState(); resetView(true); };
   $('#bInfo').onclick = () => $('#panel').classList.toggle('open');
 }
 function buildPanel(w, obj) {
