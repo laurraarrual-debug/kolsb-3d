@@ -25,7 +25,12 @@ KC.SEAM = 0.01;
 // соединительные элементы, ТПР 902-09-22.84 Альбом VIII, КЖИ 10.0.0 (МС-1…4) и КЖИ 11.0.0 (МС-5…8): B — длина стенки, мм
 KC.MS = {'МС-1': {B: 90, kg: 1.94, asym: false}, 'МС-2': {B: 100, kg: 1.98, asym: false}, 'МС-3': {B: 110, kg: 2.01, asym: false}, 'МС-4': {B: 120, kg: 2.05, asym: false},
          'МС-5': {B: 90, kg: 1.56, asym: true}, 'МС-6': {B: 100, kg: 1.60, asym: true}, 'МС-7': {B: 110, kg: 1.63, asym: true}, 'МС-8': {B: 120, kg: 1.67, asym: true}};
-KC.OTM_S = 5.338;          // асфальтовая отмостка на 1 люк, м² (спецификация «Авто Колодцев»)
+KC.OTM_B = 0.50;           // ширина асфальтовой отмостки вокруг люка, м — СНиП РК 4.01-02-2009, п. 17.3.10
+KC.OTM_S = Math.PI * KC.OTM_B * (0.84 + KC.OTM_B);   // её площадь на 1 люк, м² (как в «Авто Колодцах»: кольцо вокруг горловины Ø840)
+// защитная решётка (своя разработка, чертёж «Защитная решётка (смотровые колодцы)»): рамка из полосы 50×10 — квадрат 620×620 в шве
+// под первым элементом горловины, 4 анкера ⌀12 L=100 в плите перекрытия (отв. ⌀20 на эпоксидном клее); решётка — кольцо ⌀12
+// (развёртка 1730 мм) и 10 прутков ⌀12 через 50 мм, на двух петлях ⌀6 со стороны центра колодца; 15,3 кг
+KC.GRATE = {a: .31, w: .05, t: .01, anc: .285, ancL: .10, R: .2753, r: .006, bars: [-.225, -.175, -.125, -.075, -.025, .025, .075, .125, .175, .225], kg: 15.3};
 KC.SHELF_I = 0.02;         // уклон полок к лотку
 KC.hex = n => '#' + n.toString(16).padStart(6, '0');
 KC.TAPE_TEXT = 'ГИДРОИЗОЛЯЦИОННАЯ ЛЕНТА';   // надпись на ленте в 3D
@@ -58,6 +63,8 @@ KC.model = function (w, angs) {
   M.rings = [];
   rings.forEach(([m, h], i) => { M.rings.push(addE({kind: 'КС', mark: m, z0: z, z1: z + h, rin: M.Rin, rout: M.Rout, cx: 0, cy: 0, first: i === 0, idx: i})); z += h + KC.SEAM; });
   M.ppE = addE({kind: 'ПП', mark: S(w, 'pp'), z0: M.V, z1: M.V + M.hpp, rin: 0, rout: M.Rout, cx: 0, cy: 0});
+  // защитная решётка: рамка лежит на плите перекрытия в шве под горловиной, решётка — на рамке внутри лаза
+  M.reshE = addE({kind: 'РШ', mark: 'Решётка защитная', z0: M.V + M.hpp, z1: M.V + M.hpp + KC.GRATE.t + 2 * KC.GRATE.r, rin: 0, rout: KC.GRATE.a, cx: M.gx, cy: M.gy});
   z = M.V + M.hpp + KC.SEAM;
   M.gorl = [];
   for (let i = 0; i < N(w, 'n76'); i++) { M.gorl.push(addE({kind: 'КГ', mark: 'КС7.6', z0: z, z1: z + .59, rin: .35, rout: .42, cx: M.gx, cy: M.gy})); z += .6; }
@@ -84,7 +91,7 @@ KC.model = function (w, angs) {
   buildSeams(M);
   buildLotok(M);
   buildBase(M);
-  M.otmR = M.hat[0] + .35;   // асфальтовая отмостка — узкий конус вокруг люка (как в натуре)
+  M.otmR = Math.max(M.hat[0], .42) + KC.OTM_B;   // асфальтовая отмостка шириной 0,5 м вокруг люка (СНиП РК 4.01-02-2009, п. 17.3.10)
   buildTapes(M);
   M.surfR = M.place === 'Д' && M.pd6 ? 1.75 : Math.max(M.otmR + .35, 1.5);
   return M;
@@ -263,6 +270,11 @@ function cutAt(M, phi, ox, oy) {  // плоскость через точку (o
     else if (e.kind === 'КС' || e.kind === 'КГ') ann(e, e.z0, e.z1, e.rin, e.rout, e.key, 'conc');
     else if (e.kind === 'КО') for (let i = 0; i < e.q; i++) ann(e, e.z0 + i * .08, e.z0 + i * .08 + .07, e.rin, e.rout, e.key, 'conc');
     else if (e.kind === 'ПП') { const o = LC(0, 0, e.rout), h = LC(M.gx, M.gy, .35); if (o) for (const iv of minus(o, h)) out.push({s0: iv[0], s1: iv[1], z0: e.z0, z1: e.z1, key: e.key, cls: 'conc'}); }
+    else if (e.kind === 'РШ') {
+      const G = KC.GRATE, fr = LB(M.gx, M.gy, G.a, G.a, M.go), fi = LB(M.gx, M.gy, G.a - G.w, G.a - G.w, M.go), gr = LC(M.gx, M.gy, G.R + G.r);
+      if (fr) for (const iv of minus(fr, fi)) out.push({s0: iv[0], s1: iv[1], z0: e.z0, z1: e.z0 + G.t, key: e.key, cls: 'iron'});
+      if (gr) out.push({s0: gr[0], s1: gr[1], z0: e.z0 + G.t, z1: e.z0 + G.t + 2 * G.r, key: e.key, cls: 'iron'});
+    }
     else if (e.kind === 'ПД') {
       const b = LB(M.gx, M.gy, 1.25, .875, M.go);
       if (b) { for (const [r, z0, z1] of [[.29, e.z0, e.z0 + .11], [.47, e.z0 + .11, e.z1]]) for (const iv of minus(b, LC(M.gx, M.gy, r))) out.push({s0: iv[0], s1: iv[1], z0, z1, key: e.key, cls: 'conc'}); }
@@ -369,7 +381,10 @@ KC.stepsOf = function (M) {
         if (lines.length < 3) { lines.push(skT); skc = ''; } else if (j >= 0) { lines[j] = skT; skc = ''; } }
       out.push({...base, els: els2, t: e.kind === 'КО' ? `Кольца опорные КО6${e.q > 1 ? ' ×' + e.q : ''}` : `Кольцо горловины ${e.mark}`,
         fc: e.kind === 'КО' ? kgs('КО6') + (e.q > 1 ? ` · ${e.q} шт.` : '') : kgs(e.mark), todo: lines.slice(0, 3), chk: e.kind === 'КО' ? `Отметка под люк${skc}; горловину — в ленту.` : `Соосность с лазом${skc}; стык — лентой.`});
-    } else if (e.kind === 'ПД') out.push({...base, t: 'Плита дорожная ПД6', todo: ['Укладывается вокруг горловины на дороге.', 'Люк садится в нишу плиты Ø940.'], chk: 'Люк выступает над ПД6 на 70 мм — под слой покрытия.'});
+    } else if (e.kind === 'РШ') out.push({...base, t: 'Защитная решётка', fc: `своя разработка · ${fmt(M.cat[e.mark] ? M.cat[e.mark].kg : KC.GRATE.kg, 1)} кг`,
+      todo: ['В плите у лаза — 4 отверстия Ø20, глубиной 100 (по углам рамки).', 'Рамку 620×620 — анкерами Ø12 на эпоксидный клей.', 'Решётку на рамку; 2 петли — приварить, шов 5 мм.'],
+      chk: 'Рамка — в шве под горловиной; решётка откидывается на петлях.'});
+    else if (e.kind === 'ПД') out.push({...base, t: 'Плита дорожная ПД6', todo: ['Укладывается вокруг горловины на дороге.', 'Люк садится в нишу плиты Ø940.'], chk: 'Люк выступает над ПД6 на 70 мм — под слой покрытия.'});
     else if (e.kind === 'ЛЮК') {
       const sur = M.place === 'Д' ? 'Покрытие дороги — вровень с люком.' : M.place === 'Т' ? 'Плитка тротуара вокруг люка.' : `Асфальтовая отмостка вокруг люка, ≈Ø${mmS(2 * M.otmR)} мм.`;
       out.push({...base, els: [e.key, 'surf'], t: `Люк ${S(w, 'hatch')}`, fc: `${M.cat[e.mark] ? M.cat[e.mark].code + ' · ' + M.cat[e.mark].kg + ' кг' : ''}`,
@@ -467,6 +482,17 @@ KC.buildScene = function (M, THREE) {
       const sh = new THREE.Shape(); sh.absarc(0, 0, e.rout, 0, Math.PI * 2, false);
       const hole = new THREE.Path(); hole.absarc(M.gx, M.gy, .35, 0, Math.PI * 2, true); sh.holes.push(hole);
       put(shapeGeo(sh, e.z1 - e.z0, 96), C.plate, e.key, {pos: [0, 0, e.z0], lvl: L, edges: true});
+    } else if (e.kind === 'РШ') {
+      // в локальных осях лаза: x — от центра колодца к лазу, y — поперёк; поворот на M.go
+      const G = KC.GRATE, o = {pos: [e.cx, e.cy, e.z0], rotz: M.go, lvl: L, m: {metalness: .45, roughness: .5}}, zr = G.t + G.r, c = G.a - G.w / 2;
+      for (const [x, y, lx, ly] of [[0, c, 2 * G.a, G.w], [0, -c, 2 * G.a, G.w], [c, 0, G.w, 2 * G.a - 2 * G.w], [-c, 0, G.w, 2 * G.a - 2 * G.w]])
+        put(new THREE.BoxGeometry(lx, ly, G.t).translate(x, y, G.t / 2), C.steel, e.key, {...o, part: 'frame'});
+      for (const [x, y] of [[G.anc, G.anc], [G.anc, -G.anc], [-G.anc, G.anc], [-G.anc, -G.anc]])
+        put(new THREE.CylinderGeometry(G.r, G.r, G.ancL, 10).rotateX(Math.PI / 2).translate(x, y, G.t - G.ancL / 2), C.steel, e.key, {...o, part: 'frame'});
+      put(new THREE.TorusGeometry(G.R, G.r, 8, 72).translate(0, 0, zr), C.steel, e.key, {...o, part: 'grate'});
+      for (const x of G.bars) { const h = Math.sqrt(Math.max(0, (G.R - G.r) ** 2 - x * x)) * 2;
+        put(new THREE.CylinderGeometry(G.r, G.r, h, 8).translate(x, 0, zr), C.steel, e.key, {...o, part: 'grate'}); }
+      for (const y of [-.07, .07]) put(new THREE.TorusGeometry(.018, .003, 6, 16, Math.PI).rotateX(Math.PI / 2).translate(-G.R + .005, y, zr), C.steel, e.key, {...o, part: 'grate'});
     } else if (e.kind === 'ПД') {
       for (const [r, z0, h] of [[.29, e.z0, .11], [.47, e.z0 + .11, .11]]) {
         const sh = new THREE.Shape(); sh.moveTo(-1.25, -.875); sh.lineTo(1.25, -.875); sh.lineTo(1.25, .875); sh.lineTo(-1.25, .875); sh.lineTo(-1.25, -.875);
@@ -708,7 +734,7 @@ KC.labelAnchors = function (M, right2) {
   for (const e of M.els) {
     const r = e.kind === 'ПД' ? 1.0 : e.rout;
     const hmm = M.dims[e.mark] ? M.dims[e.mark].h : Math.round((e.z1 - e.z0) * 1000);
-    out.push({key: e.key, p: [e.cx + rx * r, e.cy + ry * r, (e.z0 + e.z1) / 2], text: `${e.pos ? e.pos + '  ' : ''}${e.mark}${e.q > 1 ? ' ×' + e.q : ''}`, sub: e.kind === 'ЛЮК' ? `h ${Math.round(M.Hl * 1000)}` : `h ${hmm}${e.q > 1 ? ' ×' + e.q : ''}`, lvlKey: e.key});
+    out.push({key: e.key, p: [e.cx + rx * r, e.cy + ry * r, (e.z0 + e.z1) / 2], text: `${e.pos ? e.pos + '  ' : ''}${e.kind === 'РШ' ? 'Решётка' : e.mark}${e.q > 1 ? ' ×' + e.q : ''}`, sub: e.kind === 'ЛЮК' ? `h ${Math.round(M.Hl * 1000)}` : e.kind === 'РШ' ? 'защитная, 620×620' : `h ${hmm}${e.q > 1 ? ' ×' + e.q : ''}`, lvlKey: e.key});
   }
   return out;
 };

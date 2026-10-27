@@ -128,7 +128,7 @@ tr.sum td{font-weight:700;background:var(--surface-2)} tr.sum td.ok{color:var(--
 <script src="core.js"></script>
 <script>
 "use strict";
-const DEMO = 'k1TZExTgMxEEWvgqb-Gc3Ya6-9OUHOEKVAoqejwUgRJQVNuiASES4QiggUQc4weyPkRJuksTxv7Hlfmkd6oE5Bt9RNBZpkBrqnjmzdz-3Hfm3Xz2_sYF_9i-1s3z_blkB31E1JCQKypX3Y50gJDYuHcoAXOXYWBLJNPRa2tW872B9BWB2EJUAg3EDqvwTPHsLJI1Qc2_ougGxt7xropNHA-XKNBA8Fqa1trWHkahytrM53CuE2oomcoBwT3KBOGcIh4xiSBkfRkoOMB0_xRUXOdSxaYpTxWVbrdGq37IsW9cdqFYsvdc5b_2r7G9vUlsaLpjgRKequVBoqiUlKytfGMw752twOWMMlQIWpkeLyECOkE2mFkJFAtrIlgSYTghd2CU44ZrjIqmg4ueM-XF3h7Okf';
+const DEMO = 'k1TZExTiQxEEWvMqr4Y1XZbY975gScARGstDnZJmskNBEQgBAZCIZlL9AEI9AIOMP3jVZutodJLNcv-_9Xqt_ySxYG-SGLI4VlPYacyEK4rmd84zs39WzGT77US264rSsOAvkpiyODQnjHP_x7YILOaYC5iKA6dm4Fwud23HLgKz_5IVBnHuo0QqGug7Z_GcEFqMsBsclp3t5FCNd8sChfMRZd_31NggCDGNdcWzzwAoU1bfRPzSaiS85HmEsZfsrOPdTFHiOlTCHFSh91OQWVUEx1V6diJSVd7tJanXXJJ27qeb2pK245zPjKoV7wra74waFeFysWXRhd5i60Moyej6mE0uLu6xW3Mz63lqVvmuJVtZjfI7LYlJS15H4fbCfHfh9wPsn2f6wG0MTcafH9hBHzlzJXQY8M4SPvBHJ4KAjqfIZXZx18cmboXPbj3nxb9fHpPw';
 const $ = s => document.querySelector(s);
 const {fmt, sgn, esc, N, S} = KC;
 let coatLbl = [], elKeys = new Set(), stepExp = false, inside = null, showCoat = false, M, SC, renderer, camera, controls, steps, stepIdx = -1, cut = false, expT = 0, expTarget = 0, showLbl = true, lblEls = [], needs = true;
@@ -141,7 +141,7 @@ function setBg() { if (renderer) renderer.setClearColor(new THREE.Color(inside ?
 async function start(payload) {
   const {w, angsDeg, obj} = await KC.unpack(payload);
   M = KC.model(w, angsDeg.map(d => d * Math.PI / 180));
-  steps = KC.stepsOf(M); elKeys = new Set(M.els.filter(e => e.kind !== 'ЛЮК' && e.kind !== 'ПД').map(e => e.key));
+  steps = KC.stepsOf(M); elKeys = new Set(M.els.filter(e => e.kind !== 'ЛЮК' && e.kind !== 'ПД' && e.kind !== 'РШ').map(e => e.key));
   $('#land').hidden = true; $('#app').hidden = false;
   document.title = `Колодец №${w.nom} — 3D`;
   $('#ttl').innerHTML = `Колодец <b>№${esc(w.nom)}</b>`;
@@ -163,7 +163,7 @@ function initGL() {
   resetView(); applyState();
   const lab = $('#labels'); lab.innerHTML = '';
   lblEls = M.els.map(e => { const d = document.createElement('div'); d.className = 'lbl'; const h = e.kind === 'ЛЮК' ? Math.round(M.Hl * 1000) : (M.dims[e.mark] ? M.dims[e.mark].h : Math.round((e.z1 - e.z0) * 1000));
-    d.innerHTML = `${esc(e.mark)}${e.q > 1 ? ' ×' + e.q : ''}<small>h ${h}${e.q > 1 ? ' ×' + e.q : ''} мм</small>`; lab.appendChild(d); return {e, d}; });
+    d.innerHTML = e.kind === 'РШ' ? `${esc(e.mark)}<small>рамка 620×620, ${KC.fmt(M.cat[e.mark] ? M.cat[e.mark].kg : KC.GRATE.kg, 1)} кг</small>` : `${esc(e.mark)}${e.q > 1 ? ' ×' + e.q : ''}<small>h ${h}${e.q > 1 ? ' ×' + e.q : ''} мм</small>`; lab.appendChild(d); return {e, d}; });
   // выноски гидроизоляции — слева от колодца
   coatLbl = [['tape', 'ЛЕНТА', 'гидроизол, 2 слоя'], ['coat', 'БИТУМ', 'горячий, 5 мм']].map(([k, t, sm]) => { const d = document.createElement('div'); d.className = 'lbl l' + (k === 'tape' ? ' tp' : ''); d.innerHTML = `${t}<small>${sm}</small>`; lab.appendChild(d); return {k, d}; });
   addEventListener('resize', () => { needs = true; });
@@ -195,7 +195,7 @@ function applyState() {
     else if ((k === 'coat' || k === 'tape') && !showCoat) v = false;
     if (/^ms\d/.test(k) && !cut && (showCoat || fin)) v = false;   // МС снаружи — под битумом
     if (k === 'surf' && showCoat && !done) v = false;   // гидроизоляция: покрытие у люка убираем, чтобы была видна горловина
-    if (inside && (ud.part === 'lid' || k === 'coat' || k === 'tape')) v = false;   // изнутри: крышка люка открыта — сверху небо
+    if (inside && (ud.part === 'lid' || ud.part === 'grate' || k === 'coat' || k === 'tape')) v = false;   // изнутри: крышка люка открыта, решётка откинута — сверху небо
     m.visible = !!v;
     if (m.isMesh && !ud.line) m.material = (st && !st.nohi && (cur.has(k) || (k === 'coat' && ud.of && cur.has(ud.of)))) ? SC.hiMat : ud.base;
   }
@@ -514,7 +514,7 @@ function buildPanel(w, obj) {
       <tr class="sum"><td>Горловина с плитой и люком</td><td class="r ok">${mm(gW)} мм ✓</td></tr></tbody></table>
       <div class="note">Шов на растворе — 10 мм. Суммы совпадают с расчётом «Авто Колодцев».</div></div>
     <div><h2>Элементы</h2><table><thead><tr><th>Марка</th><th>Размеры, мм</th><th class="r">Шт.</th><th class="r">кг</th></tr></thead><tbody>
-      ${M.rows.map(r => `<tr><td>${esc(r.mark)}</td><td>${esc(dimsOf(r.mark))}</td><td class="r">${r.q}</td><td class="r">${Math.round(r.q * r.kg)}</td></tr>`).join('')}</tbody></table></div>
+      ${M.rows.map(r => `<tr><td>${esc(r.mark)}</td><td>${esc(dimsOf(r.mark) || (/^Решётка/.test(r.mark) ? 'рамка 620×620' : ''))}</td><td class="r">${r.q}</td><td class="r">${Math.round(r.q * r.kg)}</td></tr>`).join('')}</tbody></table></div>
     ${M.seis ? `<div><h2>Сейсмика: МС</h2><table><tbody>${[['ring', 'Швы колец'], ['pp', 'Под ПП'], ['ppg', 'ПП — горловина'], ['gorl', 'Швы горловины']].map(([k, t]) => { const l = M.seams.filter(s => s.kind === k); return l.length ? `<tr><td>${t}</td><td class="r">${l[0].mark} × ${l[0].n}${l.length > 1 ? ` × ${l.length} шв.` : ''}</td></tr>` : ''; }).join('')}
       <tr><td>Шов с плитой днища</td><td class="r">обойма — бетон лотка</td></tr></tbody></table></div>` : ''}
     <div><h2>Основание и гидроизоляция</h2><table><tbody>
