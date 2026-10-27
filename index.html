@@ -155,6 +155,7 @@ function initGL() {
   el.appendChild(renderer.domElement); setBg();
   SC = KC.buildScene(M, THREE); SC.caps = KC.addCaps(SC, M.go);
   SC.plane = new THREE.Plane(new THREE.Vector3(-Math.sin(M.go), Math.cos(M.go), 0), 0);
+  SC.planeSk = new THREE.Plane(new THREE.Vector3(Math.cos(M.go), Math.sin(M.go), 0), .05);   // поперёк: остаётся половина со скобами (они на оси выпуска), смотрим на неё изнутри
   SC.hiMat = new THREE.MeshStandardMaterial({color: KC.COL.hi, roughness: .6, side: THREE.DoubleSide}); SC.coatMat = new THREE.MeshStandardMaterial({color: KC.COL.coat, roughness: .7, side: THREE.DoubleSide});
   SC.mats.push(SC.hiMat, SC.coatMat);
   camera = new THREE.PerspectiveCamera(32, 1, .05, 200); camera.up.set(0, 0, 1);
@@ -182,13 +183,13 @@ function resetView(visOnly) {
 function applyState() {
   const st = stepIdx >= 0 ? steps[stepIdx] : null;
   const done = st ? new Set(steps.slice(0, stepIdx + 1).flatMap(x => x.els)) : null, cur = st ? new Set(st.els) : null;
-  for (const m of SC.mats) m.clippingPlanes = cut ? [SC.plane] : [];
+  for (const m of SC.mats) m.clippingPlanes = cut ? [cutSk ? SC.planeSk : SC.plane] : [];
   // шаг «битум до сборки»: все элементы на земле, разнесены, уже чёрные
   if (st && st.pre) { if (expTarget === 0) { expTarget = 1.4; stepExp = true; } } else if (stepExp) { expTarget = 0; stepExp = false; }
   const fin = done && done.has('coatfin');
   for (const m of SC.meshes) {
     const k = m.userData.key, ud = m.userData;
-    let v = (ud.cap ? cut : true);
+    let v = (ud.cap ? cut && !cutSk : true);
     if (st && st.pre) v = v && (k === 'coat' ? !!ud.of && elKeys.has(ud.of) : elKeys.has(k));
     else if (done) v = v && (k === 'coat' ? done.has('coat') && done.has(ud.of) : k === 'tape' || k === 'sk' ? done.has(ud.of) : done.has(k));   // битум — с самого начала, лента — сразу после элемента над стыком
     else if ((k === 'coat' || k === 'tape') && !showCoat) v = false;
@@ -322,7 +323,7 @@ function frame() {
 /* ---------- анимация сборки: те же шаги и тот же порядок, что в паспорте ----------
    битум — на элементы на земле; кран опускает элемент на место; лента сразу наматывается на стык под ним;
    МС — на шов перед элементом; скобы — в отверстия кольца сразу после его установки; трубы и лоток — после нижнего кольца; в конце — облёт */
-let anim = null, rig = null;
+let anim = null, rig = null, cutSk = false;   // cutSk — разрез поперёк, чтобы видеть скобы на стенке
 const easeOut = t => 1 - Math.pow(1 - t, 3), easeIO = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2, cl01 = t => t < 0 ? 0 : t > 1 ? 1 : t;
 const zMinOf = m => { if (!m.geometry.boundingBox) m.geometry.computeBoundingBox(); return m.geometry.boundingBox.min.z + m.userData.z0; };
 function rigMake() {
@@ -380,14 +381,17 @@ function animPlan(i) {
   }
   if (elK.length) {
     const tapes = SC.meshes.filter(m => m.userData.key === 'tape' && elK.includes(m.userData.of));
-    if (msAfter.length) { T.push({type: 'drop', ms: msAfter, dz: .5, t0: land + .2, d: .6, hide: true}); }
-    {   // скобы этого кольца — по одной, снизу вверх, сразу после посадки
-      const g = new Map(); for (const m of SC.meshes) if (m.userData.key === 'sk' && elK.includes(m.userData.of)) { const z = Math.round(m.userData.z0 * 100); if (!g.has(z)) g.set(z, []); g.get(z).push(m); }
-      [...g.keys()].sort((a, b) => a - b).forEach((z, j) => T.push({type: 'drop', ms: g.get(z), dz: .2, t0: land + .3 + j * .18, d: .3, hide: true}));
-      if (g.size) t = Math.max(t, land + .3 + g.size * .18 + .3); }
+    if (msAfter.length) { T.push({type: 'drop', ms: msAfter, dz: .5, t0: land + .2, d: .6, hide: true}); t = Math.max(t, land + .8); }
     if (tapes.length) { T.push({type: 'wrap', ms: tapes, t0: land + .25, d: 1.5, hide: true}); t = Math.max(t, land + 1.8); }
-    else t = Math.max(t, land + (msAfter.length ? .8 : 0));
     T.push({type: 'label', keys: elK, t0: land});
+    // скобы этого кольца: кольцо стоит, лента на стыке — включаем разрез и ставим скобы по одной, снизу вверх
+    const g = new Map(); for (const m of SC.meshes) if (m.userData.key === 'sk' && elK.includes(m.userData.of)) { const z = Math.round(m.userData.z0 * 100); if (!g.has(z)) g.set(z, []); g.get(z).push(m); }
+    if (g.size) {
+      const tc = t + .2, sk0 = cut ? tc : tc + .9;   // камере — время повернуться к плоскости разреза
+      if (!cut) T.push({type: 'cut', t0: tc});
+      [...g.keys()].sort((a, b) => a - b).forEach((z, j) => T.push({type: 'drop', ms: g.get(z), dz: .22, t0: sk0 + j * .3, d: .35, hide: true}));
+      t = sk0 + (g.size - 1) * .3 + .35 + .3;
+    }
   }
   if (cur.has('surf')) { T.push({type: 'grow', ms: ms('surf'), pivot: Math.min(...ms('surf').map(zMinOf)), t0: t + .1, d: 1.1, hide: true}); t += 1.2; }
   return {T, dur: t + 1.35};
@@ -410,7 +414,7 @@ function animReset() {   // все дорожки — в конечное пол
 function animGo(i) {
   animReset();
   const st = steps[i]; stepIdx = i; anim.i = i; anim.t = 0; anim.done = false;
-  cut = !st.pre && !st.fin && !st.kind; expT = expTarget = 0; KC.explode(SC, 0);
+  cut = !st.pre && !st.fin && !st.kind; cutSk = false; expT = expTarget = 0; KC.explode(SC, 0);
   applyState(); expT = expTarget = st.pre ? 0 : 0; stepExp = false; KC.explode(SC, 0);
   if (st.pre) expTarget = 1.4;   // «на земле»: элементы разложены, мажем битумом
   const pl = animPlan(i); anim.T = pl.T; anim.dur = pl.dur; anim.orbit = !!pl.orbit;
@@ -423,7 +427,7 @@ function animGo(i) {
   box.min.z = Math.min(box.min.z, M.zBase); box.max.z += st.pre || st.fin ? .1 : .55;
   const R0 = Math.max(M.Rout, (M.pnR || 0) + .1); box.expandByPoint(new THREE.Vector3(-R0, -R0, box.min.z)); box.expandByPoint(new THREE.Vector3(R0, R0, box.min.z));
   if (st.pre) box.max.z = M.ztop + 1.4 * .32 * (M.els.length + 1);
-  anim.goal = box; anim.azCut = M.go - Math.PI / 2 - .4;
+  anim.goal = box; anim.azCut = M.go - Math.PI / 2 - .4; anim.azSk = M.go + Math.PI + .35;
   animApply(0);
 }
 function animUi() {
@@ -434,7 +438,7 @@ function animUi() {
 function animStop() {
   if (!anim) return; animReset(); anim = null;
   $('.tools').classList.remove('playing'); $('#card').classList.remove('playing'); $('#prog').hidden = true;
-  stepIdx = -1; cut = false; expT = expTarget = 0; KC.explode(SC, 0); applyState(); resetView();
+  stepIdx = -1; cut = false; cutSk = false; expT = expTarget = 0; KC.explode(SC, 0); applyState(); resetView();
 }
 function animApply(t) {
   for (const tr of anim.T) {
@@ -465,6 +469,8 @@ function animApply(t) {
         mt.clippingPlanes = [new THREE.Plane(n0, -(n0.x * cx + n0.y * cy)), new THREE.Plane(n1, -(n1.x * cx + n1.y * cy))]; mt.clipIntersection = th > Math.PI;
         m.material = mt; } }
     else if (tr.type === 'label') { if (!before) tr.keys.forEach(k => anim.lbl.add(k)); }
+    else if (tr.type === 'cut') {   // разрез посреди шага — показать скобы внутри кольца
+      if (cut !== !before) { cut = cutSk = !before; applyState(); for (const m of SC.meshes) m.userData.av = m.visible; } }
   }
 }
 function animTick(now) {
@@ -479,7 +485,7 @@ function animTick(now) {
   if (anim.resync) { anim.az = Math.atan2(camera.position.y - controls.target.y, camera.position.x - controls.target.x); anim.resync = false; }
   const st = steps[anim.i], spd = anim.paused || anim.done ? 0 : anim.spd;
   if (anim.orbit) anim.az += dt * spd * .55;
-  else if (cut) { let d = anim.azCut - anim.az; d = Math.atan2(Math.sin(d), Math.cos(d)); anim.az += d * Math.min(1, dt * 1.6); }
+  else if (cut) { let d = (cutSk ? anim.azSk : anim.azCut) - anim.az; d = Math.atan2(Math.sin(d), Math.cos(d)); anim.az += d * Math.min(1, dt * (cutSk ? 2.6 : 1.6)); }
   else anim.az += dt * spd * .07;
   // вписать: по вертикали — в свободную от карточки часть экрана, по горизонтали — во всю ширину
   const box = anim.goal, c = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3()), Rh = Math.hypot(sz.x, sz.y) / 2;
