@@ -80,6 +80,11 @@ tr.sum td{font-weight:700;background:var(--surface-2)} tr.sum td.ok{color:var(--
   .ttl h1{font-size:18px}
   .btn{padding:10px 11px;font-size:13.5px}
 }
+.stepcard .prog{position:absolute;left:12px;right:12px;top:0;height:3px;border-radius:0 0 3px 3px;background:var(--line);overflow:hidden}
+.stepcard .prog i{display:block;height:100%;width:0;background:var(--accent)}
+.stepcard.playing{grid-template-columns:auto 1fr}.stepcard.playing .nav{display:none}
+.tools.playing>.btn:not(.an){display:none}.tools:not(.playing)>.an{display:none}
+.btn.an{min-width:48px}
 @media (prefers-reduced-motion: reduce){ *{transition:none!important} }
 </style>
 </head>
@@ -91,6 +96,7 @@ tr.sum td{font-weight:700;background:var(--surface-2)} tr.sum td.ok{color:var(--
     <div class="top"><div class="ttl"><div class="k" id="kk">Колодец 3D · паспорт сборки</div><h1 id="ttl">Колодец</h1><div class="s" id="sub"></div></div>
       <button class="btn" id="bTheme" style="pointer-events:auto" aria-label="Светлая или тёмная тема">◐</button></div>
     <div class="stepcard" id="card" hidden>
+      <div class="prog" id="prog" hidden><i id="progi"></i></div>
       <div class="n" id="cn">1</div>
       <div><b id="ct"></b><div class="fc" id="cf"></div><ul id="cu"></ul><div class="chk" id="cc"></div></div>
       <div class="nav"><button class="btn main" id="next" aria-label="Следующий шаг">▶</button><button class="btn" id="prev" aria-label="Предыдущий шаг">◀</button></div>
@@ -98,7 +104,8 @@ tr.sum td{font-weight:700;background:var(--surface-2)} tr.sum td.ok{color:var(--
     <div class="inui" id="inui" hidden><div class="hint" id="inHint"></div>
       <div class="nav"><button class="btn" id="inUp" aria-label="Выше по скобам">▲</button><button class="btn" id="inDn" aria-label="Ниже по скобам">▼</button></div></div>
     <div class="tools">
-      <button class="btn main" id="bSteps" aria-pressed="false">Как собрать</button>
+      <button class="btn main" id="bPlay">▶ Сборка</button>
+      <button class="btn" id="bSteps" aria-pressed="false">Как собрать</button>
       <button class="btn" id="bCut" aria-pressed="false">Разрез</button>
       <button class="btn" id="bExp" aria-pressed="false">Разобрать</button>
       <button class="btn" id="bCoat" aria-pressed="false">Гидроизоляция</button>
@@ -106,6 +113,11 @@ tr.sum td{font-weight:700;background:var(--surface-2)} tr.sum td.ok{color:var(--
       <button class="btn" id="bLbl" aria-pressed="true">Подписи</button>
       <button class="btn" id="bReset">Вид</button>
       <button class="btn sheetbtn" id="bInfo">Данные</button>
+      <button class="btn main an" id="aPlay" aria-label="Пауза">❚❚</button>
+      <button class="btn an" id="aPrev" aria-label="Шаг назад">⏮</button>
+      <button class="btn an" id="aNext" aria-label="Следующий шаг">⏭</button>
+      <button class="btn an" id="aSpd" aria-label="Скорость">1×</button>
+      <button class="btn an" id="aStop" aria-label="Закончить">✕</button>
     </div>
   </section>
   <aside class="panel" id="panel"></aside>
@@ -116,7 +128,7 @@ tr.sum td{font-weight:700;background:var(--surface-2)} tr.sum td.ok{color:var(--
 <script src="core.js"></script>
 <script>
 "use strict";
-const DEMO = 'k1VY8xTgMxEEWvEk39Y83Ya6-9OUHOEKVAoqejwUgRJQVNuiCyIlwgFBEogpxh9kbIG202SJbleWPP-36ge2oEdEPNgiGRl6A7akjbbqXf-qOHbjXRk352z3rQY_ekewLdUrMgITBIN_quH1MhVIYdxHg45r6zJpDuyrbWvX7pSX8JbMSCDXsw2FTg8i7CGQc20cEXHOpyz4O01TfxdNaIN2k8BoKDgERbbcVPbYkjhZX5VsCmDqiCiRATIuygjglsfEIfkgZHlpw8zwZPdlmYL3XIkkPg2UVW6nhu18ZlyeL6ahuyy2XOa_eix4nuSkvCqMmWmbPYK5X4QkLkHNO18YJ9ujbXAxY_BigwVpxtGmL4eCY1ExIiSLe6IdB8ThAxzvef_7eWj38';
+const DEMO = 'k1TZExTgMxEEWvgqb-Gc3Ya6-9OUHOEKVAoqejwUgRJQVNuiASES4QiggUQc4weyPkRJuksTxv7Hlfmkd6oE5Bt9RNBZpkBrqnjmzdz-3Hfm3Xz2_sYF_9i-1s3z_blkB31E1JCQKypX3Y50gJDYuHcoAXOXYWBLJNPRa2tW872B9BWB2EJUAg3EDqvwTPHsLJI1Qc2_ougGxt7xropNHA-XKNBA8Fqa1trWHkahytrM53CuE2oomcoBwT3KBOGcIh4xiSBkfRkoOMB0_xRUXOdSxaYpTxWVbrdGq37IsW9cdqFYsvdc5b_2r7G9vUlsaLpjgRKequVBoqiUlKytfGMw752twOWMMlQIWpkeLyECOkE2mFkJFAtrIlgSYTghd2CU44ZrjIqmg4ueM-XF3h7Okf';
 const $ = s => document.querySelector(s);
 const {fmt, sgn, esc, N, S} = KC;
 let coatLbl = [], elKeys = new Set(), stepExp = false, inside = null, showCoat = false, M, SC, renderer, camera, controls, steps, stepIdx = -1, cut = false, expT = 0, expTarget = 0, showLbl = true, lblEls = [], needs = true;
@@ -192,8 +204,9 @@ function applyState() {
     $('#cu').innerHTML = st.todo.map(t => `<li>${esc(t)}</li>`).join(''); $('#cc').textContent = st.chk ? '✓ ' + st.chk : ''; }
   needs = true;
 }
-function loop() {
+function loop(now) {
   requestAnimationFrame(loop);
+  if (anim) animTick(now);
   if (Math.abs(expT - expTarget) > .001) { expT += (expTarget - expT) * .14; if (Math.abs(expT - expTarget) < .002) expT = expTarget; KC.explode(SC, expT); needs = true; }
   if (controls.update()) needs = true;
   const el = $('#view'), W = el.clientWidth, H = el.clientHeight;
@@ -205,7 +218,7 @@ function loop() {
   const st = stepIdx >= 0 ? steps[stepIdx] : null, done = st ? new Set(steps.slice(0, stepIdx + 1).flatMap(x => x.els)) : null;
   const pos = [];
   lblEls.forEach(({e, d}, i) => {
-    const vis = showLbl && !inside && (st && st.pre ? elKeys.has(e.key) : (!done || done.has(e.key)));
+    const vis = showLbl && !inside && (anim ? anim.lbl.has(e.key) : st && st.pre ? elKeys.has(e.key) : (!done || done.has(e.key)));
     if (!vis) { d.style.display = 'none'; return; }
     const r = e.kind === 'ПД' ? 1.0 : e.rout, z = (e.z0 + e.z1) / 2 + expT * .32 * i;
     const p = new THREE.Vector3(e.cx + right.x / rl * r, e.cy + right.y / rl * r, z).project(camera);
@@ -223,6 +236,7 @@ function loop() {
   pos.sort((a, b) => a.y - b.y); let yl = -1e9;
   for (const q of pos) { const y = Math.max(q.y, yl + 30); yl = y; q.d.style.left = q.x + 'px'; q.d.style.top = y + 'px'; }
   const card = $('#card'); if (!card.hidden) card.style.bottom = ($('.tools').offsetHeight + 16) + 'px';
+  if (anim) $('#progi').style.width = (100 * Math.min(1, (anim.i + Math.min(1, anim.t / anim.dur)) / steps.length)).toFixed(1) + '%';
   const iu = $('#inui'); if (!iu.hidden) iu.style.bottom = ($('.tools').offsetHeight + 16) + 'px';
 }
 /* ---------- вид изнутри: стоим на полке лотка, осматриваемся; ▲▼ — по скобам, вплоть до люка ---------- */
@@ -295,6 +309,187 @@ function frame() {
   $('#next').onclick = () => { stepIdx = Math.min(steps.length - 1, stepIdx + 1); stepCut(); applyState(); resetView(true); };
   $('#prev').onclick = () => { stepIdx = Math.max(0, stepIdx - 1); stepCut(); applyState(); resetView(true); };
   $('#bInfo').onclick = () => $('#panel').classList.toggle('open');
+  $('#bPlay').onclick = () => { out(); animStart(); };
+  $('#aPlay').onclick = () => { if (!anim) return; if (anim.done) { animGo(0); anim.paused = false; } else anim.paused = !anim.paused; animUi(); };
+  $('#aNext').onclick = () => { if (anim && anim.i < steps.length - 1) { animGo(anim.i + 1); animUi(); } };
+  $('#aPrev').onclick = () => { if (anim) { animGo(anim.t > 1.2 || anim.i === 0 ? anim.i : anim.i - 1); animUi(); } };
+  $('#aSpd').onclick = () => { if (anim) { anim.spd = anim.spd === 1 ? 2 : anim.spd === 2 ? .5 : 1; animUi(); } };
+  $('#aStop').onclick = () => animStop();
+  controls.addEventListener('start', () => { if (anim) anim.user = 1e15; });
+  controls.addEventListener('end', () => { if (anim) { anim.user = performance.now() + 2500; anim.resync = true; } });
+  addEventListener('keydown', ev => { if (!anim) return; if (ev.key === ' ') { ev.preventDefault(); $('#aPlay').click(); } else if (ev.key === 'ArrowRight') $('#aNext').click(); else if (ev.key === 'ArrowLeft') $('#aPrev').click(); else if (ev.key === 'Escape') animStop(); });
+}
+/* ---------- анимация сборки: те же шаги и тот же порядок, что в паспорте ----------
+   битум — на элементы на земле; кран опускает элемент на место; лента сразу наматывается на стык под ним;
+   МС — на шов перед элементом; трубы, лоток, стенка, скобы; в конце — облёт готового колодца */
+let anim = null, rig = null;
+const easeOut = t => 1 - Math.pow(1 - t, 3), easeIO = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2, cl01 = t => t < 0 ? 0 : t > 1 ? 1 : t;
+const zMinOf = m => { if (!m.geometry.boundingBox) m.geometry.computeBoundingBox(); return m.geometry.boundingBox.min.z + m.userData.z0; };
+function rigMake() {
+  const g = new THREE.Group(), dark = new THREE.MeshStandardMaterial({color: 0x30353a, roughness: .5, metalness: .55}), yel = new THREE.MeshStandardMaterial({color: 0xf0b018, roughness: .45, metalness: .2});
+  g.add(new THREE.Mesh(new THREE.CylinderGeometry(.011, .011, 12, 8).rotateX(Math.PI / 2).translate(0, 0, 6.3), dark));   // трос
+  g.add(new THREE.Mesh(new THREE.BoxGeometry(.2, .1, .26).translate(0, 0, .18), yel));                                    // обойма крюка
+  const hook = new THREE.Mesh(new THREE.TorusGeometry(.055, .014, 8, 24, Math.PI * 1.5).rotateX(Math.PI / 2), dark); hook.position.z = .02; g.add(hook);
+  const sl = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({color: 0x24272a})); g.add(sl);   // стропы
+  g.visible = false; SC.scene.add(g); return {g, sl};
+}
+// куда цеплять стропы: центр, верх элемента и точки строповки (относительно центра)
+function rigOf(key) {
+  const e = M.els.find(x => x.key === key), pts = (r, n = 4, a0 = Math.PI / 4) => Array.from({length: n}, (_, i) => [r * Math.cos(a0 + i * 2 * Math.PI / n), r * Math.sin(a0 + i * 2 * Math.PI / n)]);
+  if (e) {
+    if (e.kind === 'ПН') return {cx: 0, cy: 0, top: e.z1, pts: pts(e.rout * .62)};
+    if (e.kind === 'КС') return {cx: 0, cy: 0, top: e.z1, pts: pts((e.rin + e.rout) / 2)};
+    if (e.kind === 'ПП') return {cx: 0, cy: 0, top: e.z1, pts: pts(M.Rout * .7, 3, M.go + Math.PI / 3)};
+    if (e.kind === 'КГ') return {cx: e.cx, cy: e.cy, top: e.z1, pts: pts(.385)};
+    if (e.kind === 'ПД') { const c = Math.cos(M.go), s = Math.sin(M.go); return {cx: e.cx, cy: e.cy, top: e.z1, pts: [[1.05, .7], [-1.05, .7], [-1.05, -.7], [1.05, -.7]].map(([x, y]) => [x * c - y * s, x * s + y * c])}; }
+    return null;
+  }
+  const p = M.wall.find(x => x.key === key); if (!p || !M.uin) return null;
+  const u = M.uin, t = [-u[1], u[0]], b = M.bw / 2 - .12, d = M.dw - M.tw / 2;
+  return {cx: u[0] * d, cy: u[1] * d, top: p.z1, pts: [[t[0] * b, t[1] * b], [-t[0] * b, -t[1] * b]]};
+}
+// план шага: дорожки (что и когда двигается) и длительность
+function animPlan(i) {
+  const st = steps[i], cur = new Set(st.els), T = []; let t = 0;
+  const ms = k => SC.meshes.filter(m => m.userData.key === k);
+  if (st.pre) { T.push({type: 'paint', t0: .7, d: 3.0}); return {T, dur: 4.6}; }
+  if (st.fin) return {T, dur: 7, orbit: true};
+  const msAll = SC.meshes.filter(m => /^ms\d/.test(m.userData.key) && cur.has(m.userData.key));
+  const elK = st.els.filter(k => M.els.some(e => e.key === k) || M.wall.some(p => p.key === k));
+  const e0 = M.els.find(e => elK.includes(e.key)), zSplit = e0 ? e0.z0 + .03 : 1e9;
+  const msBefore = msAll.filter(m => m.userData.z0 <= zSplit), msAfter = msAll.filter(m => m.userData.z0 > zSplit);
+  if (msBefore.length) { T.push({type: 'drop', ms: msBefore, dz: .5, t0: 0, d: .7, hide: true}); t = .85; }
+  if (cur.has('base')) { T.push({type: 'grow', ms: ms('base'), pivot: M.zBase, t0: 0, d: 1.4}); t = 1.4; }
+  if (cur.has('pipe')) { T.push({type: 'slide', ms: ms('pipe'), d0: 1.6, t0: 0, d: 1.6}); t = 1.6; }
+  if (cur.has('lot')) { T.push({type: 'grow', ms: ms('lot'), pivot: 0, t0: 0, d: 1.8}); t = 1.8; }
+  if (cur.has('wall0')) { T.push({type: 'grow', ms: ms('wall0'), pivot: 0, t0: 0, d: .6}); t = .7; }
+  if (cur.has('sk')) {   // скобы — по одной, снизу вверх
+    const g = new Map(); for (const m of ms('sk')) { const z = Math.round(m.userData.z0 * 100); if (!g.has(z)) g.set(z, []); g.get(z).push(m); }
+    [...g.keys()].sort((a, b) => a - b).forEach((z, j) => T.push({type: 'drop', ms: g.get(z), dz: .25, t0: j * .16, d: .35, hide: true}));
+    t = g.size * .16 + .35;
+  }
+  let land = t;
+  for (const k of elK) {
+    const e = M.els.find(x => x.key === k), body = SC.meshes.filter(m => m.userData.key === k || (m.userData.key === 'coat' && m.userData.of === k));
+    if (e && e.kind === 'КО') {   // опорные кольца — по одному, вручную
+      const g = new Map(); for (const m of body) { const j = Math.max(0, Math.round((zMinOf(m) - e.z0) / .08)); if (!g.has(j)) g.set(j, []); g.get(j).push(m); }
+      [...g.keys()].sort((a, b) => a - b).forEach((j, n) => T.push({type: 'drop', ms: g.get(j), dz: .55, t0: t + n * .45, d: .55, hide: true}));
+      land = t + (g.size - 1) * .45 + .55;
+    } else if (e && e.kind === 'ЛЮК') { T.push({type: 'drop', ms: body, dz: .7, t0: t, d: .9, hide: true}); land = t + .9; }
+    else {
+      const r = rigOf(k), z0 = e ? e.z0 : M.wall.find(p => p.key === k).z0, dz = Math.max(1.6, M.ztop + 1.1 - z0), d = Math.min(3.2, 1.3 + .22 * dz);
+      T.push({type: 'drop', ms: body, dz, t0: t, d, hide: true, rig: r}); land = t + d;
+    }
+    t = land;
+  }
+  if (elK.length) {
+    const tapes = SC.meshes.filter(m => m.userData.key === 'tape' && elK.includes(m.userData.of));
+    if (msAfter.length) { T.push({type: 'drop', ms: msAfter, dz: .5, t0: land + .2, d: .6, hide: true}); }
+    if (tapes.length) { T.push({type: 'wrap', ms: tapes, t0: land + .25, d: 1.5, hide: true}); t = land + 1.8; }
+    else t = Math.max(t, land + (msAfter.length ? .8 : 0));
+    T.push({type: 'label', keys: elK, t0: land});
+  }
+  if (cur.has('surf')) { T.push({type: 'grow', ms: ms('surf'), pivot: Math.min(...ms('surf').map(zMinOf)), t0: t + .1, d: 1.1, hide: true}); t += 1.2; }
+  return {T, dur: t + 1.35};
+}
+function animStart() {
+  if (inside) setInside(false);
+  stepIdx = -1; expT = expTarget = 0; KC.explode(SC, 0);
+  for (const m of SC.meshes) { m.userData.ax = m.position.x; m.userData.ay = m.position.y; }
+  if (!rig) rig = rigMake();
+  anim = {i: 0, t: 0, dur: 1, T: [], spd: 1, paused: false, last: 0, lbl: new Set(), user: 0, resync: true, az: Math.atan2(camera.position.y - controls.target.y, camera.position.x - controls.target.x), done: false};
+  $('.tools').classList.add('playing'); $('#card').classList.add('playing'); $('#prog').hidden = false;
+  animGo(0); animUi();
+}
+function animReset() {   // все дорожки — в конечное положение
+  for (const m of SC.meshes) { if (m.userData.z0 !== undefined) m.position.z = m.userData.z0; if (m.userData.ax !== undefined) { m.position.x = m.userData.ax; m.position.y = m.userData.ay; } m.scale.set(1, 1, 1);
+    if (m.userData.wrapMat) { m.userData.wrapMat.dispose(); m.userData.wrapMat = null; m.material = m.userData.base; } }
+  const cm = SC.meshes.find(m => m.userData.key === 'coat'); if (cm) cm.userData.base.clippingPlanes = [];
+  if (rig) rig.g.visible = false;
+}
+function animGo(i) {
+  animReset();
+  const st = steps[i]; stepIdx = i; anim.i = i; anim.t = 0; anim.done = false;
+  cut = !st.pre && !st.fin && !st.kind; expT = expTarget = 0; KC.explode(SC, 0);
+  applyState(); expT = expTarget = st.pre ? 0 : 0; stepExp = false; KC.explode(SC, 0);
+  if (st.pre) expTarget = 1.4;   // «на земле»: элементы разложены, мажем битумом
+  const pl = animPlan(i); anim.T = pl.T; anim.dur = pl.dur; anim.orbit = !!pl.orbit;
+  anim.lbl = new Set(st.pre ? elKeys : steps.slice(0, i).flatMap(s => s.els));
+  for (const m of SC.meshes) m.userData.av = m.visible;
+  // кадр: то, что уже собрано, и текущий элемент (колодец «растёт» — камера отъезжает); на «битуме» — разложенные элементы; в конце — весь
+  const box = new THREE.Box3();
+  for (const m of SC.meshes) if (!m.userData.cap && (st.fin || st.pre ? m.userData.key !== 'surf' || st.fin : m.userData.av) && !m.userData.line) box.expandByObject(m);
+  if (box.isEmpty()) for (const m of SC.meshes) if (!m.userData.cap) box.expandByObject(m);
+  box.min.z = Math.min(box.min.z, M.zBase); box.max.z += st.pre || st.fin ? .1 : .55;
+  const R0 = Math.max(M.Rout, (M.pnR || 0) + .1); box.expandByPoint(new THREE.Vector3(-R0, -R0, box.min.z)); box.expandByPoint(new THREE.Vector3(R0, R0, box.min.z));
+  if (st.pre) box.max.z = M.ztop + 1.4 * .32 * (M.els.length + 1);
+  anim.goal = box; anim.azCut = M.go - Math.PI / 2 - .4;
+  animApply(0);
+}
+function animUi() {
+  if (!anim) return;
+  $('#aPlay').textContent = anim.done ? '↻' : anim.paused ? '▶' : '❚❚'; $('#aPlay').setAttribute('aria-label', anim.done ? 'Сначала' : anim.paused ? 'Дальше' : 'Пауза');
+  $('#aSpd').textContent = anim.spd === .5 ? '½×' : anim.spd + '×';
+}
+function animStop() {
+  if (!anim) return; animReset(); anim = null;
+  $('.tools').classList.remove('playing'); $('#card').classList.remove('playing'); $('#prog').hidden = true;
+  stepIdx = -1; cut = false; expT = expTarget = 0; KC.explode(SC, 0); applyState(); resetView();
+}
+function animApply(t) {
+  for (const tr of anim.T) {
+    const p = cl01((t - tr.t0) / tr.d), before = t < tr.t0;
+    if (tr.type === 'drop') { const k = 1 - easeOut(p);
+      for (const m of tr.ms) { m.visible = m.userData.av && !(tr.hide && before); m.position.z = m.userData.z0 + tr.dz * k; }
+      if (tr.rig) {   // кран: ведёт элемент, после посадки трос уходит вверх
+        const r = tr.rig, H = .85, up = cl01((t - tr.t0 - tr.d - .25) / .8);
+        if (!before && up < 1) { if (rig.cur !== tr) { rig.cur = tr; const a = []; for (const q of r.pts) a.push(0, 0, 0, q[0], q[1], -H); rig.sl.geometry.setAttribute('position', new THREE.Float32BufferAttribute(a, 3)); rig.sl.geometry.computeBoundingSphere(); }
+          rig.g.visible = true; rig.sl.visible = up === 0; rig.g.position.set(r.cx, r.cy, r.top + tr.dz * k + H + 3 * easeIO(up)); }
+        else if (rig.cur === tr) rig.g.visible = false;
+      } }
+    else if (tr.type === 'slide') { const k = 1 - easeOut(p); for (const m of tr.ms) { const a = m.rotation.z; m.position.x = m.userData.ax + Math.cos(a) * tr.d0 * k; m.position.y = m.userData.ay + Math.sin(a) * tr.d0 * k; } }
+    else if (tr.type === 'grow') { const s = Math.max(.002, easeOut(p)); for (const m of tr.ms) { m.visible = m.userData.av && !(tr.hide && before); m.scale.z = s; m.position.z = m.userData.z0 * s + tr.pivot * (1 - s); } }
+    else if (tr.type === 'paint') {   // битум «поднимается» по разложенным элементам снизу вверх
+      const cm = SC.meshes.find(m => m.userData.key === 'coat'); if (!cm) continue;
+      const lo = -M.pnH - .05, hi = M.ztop + 1.4 * .32 * (M.els.length + 1), h = lo + (hi - lo) * easeIO(p);
+      cm.userData.base.clippingPlanes = p >= 1 ? [] : [new THREE.Plane(new THREE.Vector3(0, 0, -1), h)]; }
+    else if (tr.type === 'wrap') {   // лента наматывается вокруг стыка, начиная слева, через передний край
+      const th = 2 * Math.PI * easeIO(p), camAz = Math.atan2(camera.position.y - controls.target.y, camera.position.x - controls.target.x);
+      for (const m of tr.ms) {
+        if (m.userData.line) { m.visible = m.userData.av && p >= 1; continue; }
+        m.visible = m.userData.av && !before;
+        if (p >= 1) { if (m.userData.wrapMat) { m.userData.wrapMat.dispose(); m.userData.wrapMat = null; m.material = m.userData.base; } continue; }
+        if (!m.userData.wrapMat) { m.userData.wrapMat = m.userData.base.clone(); m.userData.wrapA = camAz - Math.PI / 2; }
+        const mt = m.userData.wrapMat, a0 = m.userData.wrapA, a1 = a0 + th, cx = m.position.x, cy = m.position.y;
+        const n0 = new THREE.Vector3(-Math.sin(a0), Math.cos(a0), 0), n1 = new THREE.Vector3(Math.sin(a1), -Math.cos(a1), 0);
+        mt.clippingPlanes = [new THREE.Plane(n0, -(n0.x * cx + n0.y * cy)), new THREE.Plane(n1, -(n1.x * cx + n1.y * cy))]; mt.clipIntersection = th > Math.PI;
+        m.material = mt; } }
+    else if (tr.type === 'label') { if (!before) tr.keys.forEach(k => anim.lbl.add(k)); }
+  }
+}
+function animTick(now) {
+  const dt = Math.min(.05, anim.last ? (now - anim.last) / 1000 : 0); anim.last = now;
+  if (!anim.paused && !anim.done) {
+    anim.t += dt * anim.spd;
+    if (anim.t >= anim.dur) { if (anim.i < steps.length - 1) animGo(anim.i + 1); else { anim.t = anim.dur; anim.done = true; animUi(); } }
+    animApply(anim.t);
+  }
+  // камера: медленный облёт; на шагах в разрезе — к плоскости разреза; пока пользователь крутит сам — не мешаем
+  if (now < anim.user) { needs = true; return; }
+  if (anim.resync) { anim.az = Math.atan2(camera.position.y - controls.target.y, camera.position.x - controls.target.x); anim.resync = false; }
+  const st = steps[anim.i], spd = anim.paused || anim.done ? 0 : anim.spd;
+  if (anim.orbit) anim.az += dt * spd * .55;
+  else if (cut) { let d = anim.azCut - anim.az; d = Math.atan2(Math.sin(d), Math.cos(d)); anim.az += d * Math.min(1, dt * 1.6); }
+  else anim.az += dt * spd * .07;
+  // вписать: по вертикали — в свободную от карточки часть экрана, по горизонтали — во всю ширину
+  const box = anim.goal, c = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3()), Rh = Math.hypot(sz.x, sz.y) / 2;
+  const vw = $('#view'), aspect = (vw.clientWidth / vw.clientHeight) || 1, tv = Math.tan(camera.fov * Math.PI / 360), th = tv * aspect;
+  const el = st.pre ? .3 : .38, sh = Math.min(.6, ($('#card').offsetHeight + $('.tools').offsetHeight + 24) / Math.max(1, vw.clientHeight));
+  const Hb = sz.z * Math.cos(el) + 2 * Rh * Math.sin(el), d = Math.max(Hb / (2 * tv * (1 - sh)), 2 * Rh / (2 * th)) / .9 + Rh * .5;
+  c.z -= d * tv * sh / Math.cos(el);
+  const goal = new THREE.Vector3(c.x + d * Math.cos(el) * Math.cos(anim.az), c.y + d * Math.cos(el) * Math.sin(anim.az), c.z + d * Math.sin(el)), k = anim.snap ? 1 : 1 - Math.pow(.04, dt);
+  camera.position.lerp(goal, k); controls.target.lerp(c, k);
+  needs = true;
 }
 function buildPanel(w, obj) {
   const mm = v => Math.round(v * 1000), nR = M.rings.length;
