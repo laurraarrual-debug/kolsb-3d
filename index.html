@@ -190,7 +190,7 @@ function applyState() {
     const k = m.userData.key, ud = m.userData;
     let v = (ud.cap ? cut : true);
     if (st && st.pre) v = v && (k === 'coat' ? !!ud.of && elKeys.has(ud.of) : elKeys.has(k));
-    else if (done) v = v && (k === 'coat' ? done.has('coat') && done.has(ud.of) : k === 'tape' ? done.has(ud.of) : done.has(k));   // битум — с самого начала, лента — сразу после элемента над стыком
+    else if (done) v = v && (k === 'coat' ? done.has('coat') && done.has(ud.of) : k === 'tape' || k === 'sk' ? done.has(ud.of) : done.has(k));   // битум — с самого начала, лента — сразу после элемента над стыком
     else if ((k === 'coat' || k === 'tape') && !showCoat) v = false;
     if (/^ms\d/.test(k) && !cut && (showCoat || fin)) v = false;   // МС снаружи — под битумом
     if (k === 'surf' && showCoat && !done) v = false;   // гидроизоляция: покрытие у люка убираем, чтобы была видна горловина
@@ -321,7 +321,7 @@ function frame() {
 }
 /* ---------- анимация сборки: те же шаги и тот же порядок, что в паспорте ----------
    битум — на элементы на земле; кран опускает элемент на место; лента сразу наматывается на стык под ним;
-   МС — на шов перед элементом; трубы, лоток, стенка, скобы; в конце — облёт готового колодца */
+   МС — на шов перед элементом; скобы — в отверстия кольца сразу после его установки; трубы и лоток — после нижнего кольца; в конце — облёт */
 let anim = null, rig = null;
 const easeOut = t => 1 - Math.pow(1 - t, 3), easeIO = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2, cl01 = t => t < 0 ? 0 : t > 1 ? 1 : t;
 const zMinOf = m => { if (!m.geometry.boundingBox) m.geometry.computeBoundingBox(); return m.geometry.boundingBox.min.z + m.userData.z0; };
@@ -364,11 +364,6 @@ function animPlan(i) {
   if (cur.has('pipeD')) { T.push({type: 'slide', ms: ms('pipeD'), d0: 1.6, t0: 0, d: 1.6}); t = 1.6; }
   if (cur.has('lot')) { T.push({type: 'grow', ms: ms('lot'), pivot: 0, t0: 0, d: 1.8}); t = 1.8; }
   if (cur.has('wall0')) { T.push({type: 'grow', ms: ms('wall0'), pivot: 0, t0: 0, d: .6}); t = .7; }
-  if (cur.has('sk')) {   // скобы — по одной, снизу вверх
-    const g = new Map(); for (const m of ms('sk')) { const z = Math.round(m.userData.z0 * 100); if (!g.has(z)) g.set(z, []); g.get(z).push(m); }
-    [...g.keys()].sort((a, b) => a - b).forEach((z, j) => T.push({type: 'drop', ms: g.get(z), dz: .25, t0: j * .16, d: .35, hide: true}));
-    t = g.size * .16 + .35;
-  }
   let land = t;
   for (const k of elK) {
     const e = M.els.find(x => x.key === k), body = SC.meshes.filter(m => m.userData.key === k || (m.userData.key === 'coat' && m.userData.of === k));
@@ -386,7 +381,11 @@ function animPlan(i) {
   if (elK.length) {
     const tapes = SC.meshes.filter(m => m.userData.key === 'tape' && elK.includes(m.userData.of));
     if (msAfter.length) { T.push({type: 'drop', ms: msAfter, dz: .5, t0: land + .2, d: .6, hide: true}); }
-    if (tapes.length) { T.push({type: 'wrap', ms: tapes, t0: land + .25, d: 1.5, hide: true}); t = land + 1.8; }
+    {   // скобы этого кольца — по одной, снизу вверх, сразу после посадки
+      const g = new Map(); for (const m of SC.meshes) if (m.userData.key === 'sk' && elK.includes(m.userData.of)) { const z = Math.round(m.userData.z0 * 100); if (!g.has(z)) g.set(z, []); g.get(z).push(m); }
+      [...g.keys()].sort((a, b) => a - b).forEach((z, j) => T.push({type: 'drop', ms: g.get(z), dz: .2, t0: land + .3 + j * .18, d: .3, hide: true}));
+      if (g.size) t = Math.max(t, land + .3 + g.size * .18 + .3); }
+    if (tapes.length) { T.push({type: 'wrap', ms: tapes, t0: land + .25, d: 1.5, hide: true}); t = Math.max(t, land + 1.8); }
     else t = Math.max(t, land + (msAfter.length ? .8 : 0));
     T.push({type: 'label', keys: elK, t0: land});
   }

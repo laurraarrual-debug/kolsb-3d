@@ -89,6 +89,9 @@ KC.model = function (w, angs) {
   M.surfR = M.place === 'Д' && M.pd6 ? 1.75 : Math.max(M.otmR + .35, 1.5);
   return M;
 };
+// скобы ходовые — в отверстиях стеновых колец (серия 3.900.1-14, п. 2.5, 4.9): ставятся вместе с кольцом, в котором стоят
+KC.skOwner = function (M, z) { let ow = null; for (const e of M.els) if ((e.kind === 'КС' || e.kind === 'ПП' || e.kind === 'КГ' || e.kind === 'КО') && e.z0 <= z + .02) ow = e; return ow; };
+KC.skCount = (M, e) => M.steps.filter(z => (KC.skOwner(M, z) || {}).key === e.key).length;
 KC.stepRadius = function (M, z) {
   for (const e of M.els) if ((e.kind === 'КГ' || e.kind === 'КО') && z >= e.z0 - .005 && z <= e.z1 + .005) return M.a + e.rin;
   return z > M.V + M.hpp ? M.a + .35 : M.Rin;
@@ -333,11 +336,12 @@ KC.stepsOf = function (M) {
       const sm = seamOf('ring', e)[0];
       const els2 = sm ? [e.key, sm.key] : [e.key];
       let todo;
+      const nsk = KC.skCount(M, e);
       if (e.first) todo = ['На раствор М100, шов 10 мм; стык с днищем — сразу лентой.', hasIn ? `Проёмы у дна — ${nLow} шт.; перепадный вход — лоток ${H(M.zin)} м.` : `Проёмы под трубы — ${nLow} шт., по направлениям с плана.`, 'Следом — трубы и лоток, до остальных колец.'];
       else if (sm) todo = [`На верх нижнего кольца — ${sm.mark} ×${sm.n} ${msLay(sm)}.`, 'Раствор М100, шов 10 мм; затем кольцо.', hasIn ? `Проём под перепадный вход: лоток ${H(M.zin)} м.` : `Верх кольца — ${H(e.z1)} м.`];
       else todo = ['На раствор М100, шов 10 мм.', 'Кольцо — соосно нижнему, швы заполнить.', hasIn ? `Проём под перепадный вход: лоток ${H(M.zin)} м.` : `Верх кольца — ${H(e.z1)} м.`];
       out.push({...base, els: els2, t: `Кольцо ${e.mark}${e.first ? ' — нижнее' : ''}`, todo,
-        chk: e.first ? (seis ? 'Лента Г-образно, на выступ плиты; МС здесь нет.' : 'Лента Г-образно, на выступ плиты.') : 'Вертикальность; стык снизу — сразу лентой.'});
+        chk: e.first ? `Лента Г-образно${nsk ? `; скобы ×${nsk} под лазом` : ', на выступ плиты'}${seis ? '; МС нет' : ''}.` : `Вертикальность${nsk ? `; скобы ×${nsk} под лазом` : ''}; стык — лентой.`});
     } else if (e.kind === 'ПП') {
       const sm = seamOf('pp', e)[0];
       out.push({...base, els: sm ? [e.key, sm.key] : [e.key], t: `Плита перекрытия ${e.mark}`,
@@ -354,8 +358,9 @@ KC.stepsOf = function (M) {
       else lines.push('На раствор М100, соосно лазу.');
       if (sg.length) lines.push(`На шов сверху — ${sg[0].mark} ×4 на осях.`);
       else if (e.kind === 'КГ') lines.push('Высокие кольца ставятся первыми.');
+      const nsk = KC.skCount(M, e), skc = nsk ? `; скобы ×${nsk} под лазом` : '';
       out.push({...base, els: els2, t: e.kind === 'КО' ? `Кольца опорные КО6${e.q > 1 ? ' ×' + e.q : ''}` : `Кольцо горловины ${e.mark}`,
-        fc: e.kind === 'КО' ? kgs('КО6') + (e.q > 1 ? ` · ${e.q} шт.` : '') : kgs(e.mark), todo: lines.slice(0, 3), chk: e.kind === 'КО' ? 'Отметка под люк; горловину — в ленту.' : 'Соосность с лазом; стык — лентой.'});
+        fc: e.kind === 'КО' ? kgs('КО6') + (e.q > 1 ? ` · ${e.q} шт.` : '') : kgs(e.mark), todo: lines.slice(0, 3), chk: e.kind === 'КО' ? `Отметка под люк${skc}; горловину — в ленту.` : `Соосность с лазом${skc}; стык — лентой.`});
     } else if (e.kind === 'ПД') out.push({...base, t: 'Плита дорожная ПД6', todo: ['Укладывается вокруг горловины на дороге.', 'Люк садится в нишу плиты Ø940.'], chk: 'Люк выступает над ПД6 на 70 мм — под слой покрытия.'});
     else if (e.kind === 'ЛЮК') {
       const sur = M.place === 'Д' ? 'Покрытие дороги — вровень с люком.' : M.place === 'Т' ? 'Плитка тротуара вокруг люка.' : `Асфальтовая отмостка вокруг люка, ≈Ø${mmS(2 * M.otmR)} мм.`;
@@ -382,12 +387,11 @@ KC.stepsOf = function (M) {
         chk: `На ${mmS(N(w, 'drop'))} мм выше лотка выпуска.`});
     }
   }
-  out.push({els: ['sk'], t: 'Скобы ходовые', fc: `217-110-0103 · ${N(w, 'sk')} шт.`, todo: ['По одной вертикали под лазом, шаг 300 мм.', 'Верхняя — у люка, нижняя — над лотком.'], chk: 'Крепление каждой скобы.'});
   const gin = N(w, 'gin'), jr = M.tapes.filter(t => t.part === 'r').length, jg = M.tapes.length - jr;
   const plural = (n, a, b, c) => { const m = n % 10, h = n % 100; return (m === 1 && h !== 11) ? a : (m >= 2 && m <= 4 && (h < 12 || h > 14)) ? b : c; };
   out.push({els: ['coatfin'], nohi: true, fin: true, t: 'Гидроизоляция — доделка', fc: `лента ${fmt(N(w, 'lenta'))} м² · внутри ${fmt(gin)} м²`,
     todo: [`Проходы труб${seis ? ', МС' : ''} и сколы — горячим битумом.`, `Внутри — Битрон-11, ${fmt(M.bitron, 1)} кг/м².`, `Лента: рабочая часть — ${jr}, горловина — ${jg} ${plural(jg, 'стык', 'стыка', 'стыков')}.`],
-    chk: 'Лента без складок и пузырей, края прижаты.'});
+    chk: 'Лента без складок; скобы — одной вертикалью, крепко.'});
   return out;
 };
 
@@ -540,9 +544,9 @@ KC.buildScene = function (M, THREE) {
   }
   // скобы
   M.steps.forEach(zz => {
-    const up = zz > M.V + M.hpp, r = KC.stepRadius(M, zz) - (up ? M.a : 0), cx = up ? M.gx : 0, cy = up ? M.gy : 0, L = lvlAt(zz);
-    for (const yy of [-.15, .15]) put(new THREE.BoxGeometry(.12, .022, .022).translate(r - .06, yy, 0), C.step, 'sk', {pos: [cx, cy, zz], rotz: M.go, lvl: L, m: {metalness: .4, roughness: .45}});
-    put(new THREE.BoxGeometry(.022, .32, .022).translate(r - .12, 0, 0), C.step, 'sk', {pos: [cx, cy, zz], rotz: M.go, lvl: L, m: {metalness: .4, roughness: .45}});
+    const up = zz > M.V + M.hpp, r = KC.stepRadius(M, zz) - (up ? M.a : 0), cx = up ? M.gx : 0, cy = up ? M.gy : 0, L = lvlAt(zz), of = (KC.skOwner(M, zz) || {}).key;   // скоба — вместе со своим кольцом
+    for (const yy of [-.15, .15]) put(new THREE.BoxGeometry(.12, .022, .022).translate(r - .06, yy, 0), C.step, 'sk', {pos: [cx, cy, zz], rotz: M.go, lvl: L, of, m: {metalness: .4, roughness: .45}});
+    put(new THREE.BoxGeometry(.022, .32, .022).translate(r - .12, 0, 0), C.step, 'sk', {pos: [cx, cy, zz], rotz: M.go, lvl: L, of, m: {metalness: .4, roughness: .45}});
   });
   // МС на швах
   M.seams.forEach(s => {
