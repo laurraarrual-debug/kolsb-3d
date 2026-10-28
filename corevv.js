@@ -126,7 +126,8 @@ VV.model = function (w, angs) {
   M.otmR = Math.max(M.hat[0], .42) + KC.OTM_B;
   M.ztop = Math.max(...M.hatches.map(h => h.ztop));
   M.zBase = Math.min(...M.base.map(b => b.z0)); M.zBaseTop = Math.min(...M.base.filter(b => b.cls !== 'comp').map(b => b.z0));
-  M.hb = 0; M.hv = 0; M.wall = []; M.tapes = []; M.rings = M.rings || []; M.k10 = M.k10 || [];
+  M.hb = 0; M.hv = 0; M.wall = []; M.rings = M.rings || []; M.k10 = M.k10 || [];
+  buildTapesVV(M);
   M.surfR = M.rect ? Math.hypot(M.A / 2 + M.t + .6, M.B / 2 + M.t + .6) : Math.max(M.Rout + .5, M.la + M.otmR + .35);
   KC.water(M);
   return M;
@@ -179,6 +180,28 @@ function gorl(M, cx, cy, z, hi, ztop, ga) {
   if (!g.pd && g.hatch.z0 - (z - SEAM) > .005) g.hatch.bed = [z - SEAM, g.hatch.z0];
   M.hatches.push(g);
   return g;
+}
+
+// 0.11: лента ГИ-Г на стыки сборных колец в мокрых грунтах (ТПР 901-09-11.84, Альбом I, п. 3.2; как в К1 — гидроизол 400 мм в 2 слоя):
+// круглые — ПН–кольцо, между кольцами, кольцо–ПП; горловины — под КС10, ПП10, КС7, КО6. Какие стыки в зоне воды — по таблице
+// (jrW, jgA, jgB — снизу, у прямоугольных jgB — на каждую горловину), отбор в KC.water. Данные до 0.11 — без ленты (в В1 её не было)
+function buildTapesVV(M) {
+  const S2 = SEAM / 2, T = [];
+  M.tapeW = N(M.w, 'lentaW') || .40; M.tapeN = N(M.w, 'lentaN') || 2; M.tapeAdd = .10; M.bitron = N(M.w, 'bitron') || 1.5;
+  M.tapes = T;
+  if (M.w.zw === undefined) return;
+  if (!M.rect) {
+    T.push({z: 0, lo: 0, cx: 0, cy: 0, r: M.Rout, part: 'r', below: M.pnE});
+    M.rings.forEach(r => T.push({z: r.z1 + S2, lo: -1, cx: 0, cy: 0, r: M.Rout, part: 'r', below: r}));
+    M.k10.forEach((k, i) => T.push({z: k.z0 - S2, lo: -1, cx: k.cx, cy: k.cy, r: .58, part: 'gA', below: i ? M.k10[i - 1] : M.ppE}));
+    if (M.p10E) T.push({z: M.p10E.z0 - S2, lo: -1, cx: M.p10E.cx, cy: M.p10E.cy, r: .58, part: 'gA', below: M.k10[M.k10.length - 1] || M.ppE});
+  }
+  for (const g of M.hatches) {
+    const below0 = M.rect ? null : (M.p10E || M.ppE);
+    g.rings.forEach((e, i) => T.push({z: e.z0 - S2, lo: -1, cx: g.x, cy: g.y, r: .42, part: 'gB', hatch: g.i, below: i ? g.rings[i - 1] : below0}));
+    if (g.ko) for (let i = 0; i < g.ko.q; i++)
+      T.push({z: i ? g.ko.z0 + i * .08 - S2 : g.ko.z0 - (SEAM + (M.nabJ || 0)) / 2, lo: -1, cx: g.x, cy: g.y, r: .42, part: 'gB', hatch: g.i, below: g.ko});
+  }
 }
 
 /* ---- круглые ---- */
@@ -313,7 +336,13 @@ function buildRect(M) {
   if (M.grunt === 'III') M.base.push(bx('уплотнённый грунт (1 м)', z0 - 1.12, z0 - .12, .6, 'comp', 'comp'));
   M.zamok = M.grunt === 'III' ? {z0: z0 - .12, z1: .4, x: ax + t, y: by + t, b: .6} : null;
   M.Rout = Math.hypot(ax + t, by + t); M.Rin = Math.min(ax, by); M.D = 0;
-  M.armNote = 'Армирование стен показано условно; в этом разделе подробно не рассматривается — см. раздел КЖ';
+  // армирование стен — точно по ТПР (0.11): обычные районы — бетон М150 без арматуры; сейсмика — сетка С3Вр1 (VI.88, АС-12);
+  // вне ТПР (КЖ) без сейсмики — сетка условно; отверстия Ду ≥ 500 — обрамление сетками ⌀10 A-I (Альбом IV, АС-2)
+  M.kzh = N(w, 'kzh') === 1; M.armKind = M.seis ? 'seis' : M.kzh ? 'kzh' : '';
+  const fr = (M.Du >= .5 - 1e-6 || M.du >= .5 - 1e-6) ? '; отверстия Ду ≥ 500 — обрамление сетками ⌀10 A-I (Альбом IV, АС-2)' : '';
+  M.armNote = M.seis ? `Стены — рулонная сетка С 3Вр1-150/3Вр1-150 у обеих граней, защитный слой 20 мм (ТПР 901-09-11.84, Альбом VI.88, АС-12)${fr}${M.kzh ? '; колодец вне ТПР — армирование уточняется в разделе КЖ' : ''}`
+    : M.kzh ? `Колодец вне ТПР: армирование стен — по разделу КЖ, здесь показано условно${fr}`
+    : `Стены — бетон М150 без армирования (ТПР 901-09-11.84, Альбом IV, АС-1, прим. 5)${fr}`;
   if (M.seis) { M.hatches.forEach(g => gorlSeams(M, g, g.plate ? M.plates.find(p => p.it === g.plate) : null, [0, 1, 2, 3].map(j => g.ga + j * Math.PI / 2))); M.seams.forEach((s, i) => { s.key = 'ms' + i; }); }
   M.gx = H[0].x; M.gy = H[0].y;
 }
@@ -350,10 +379,15 @@ function buildPipes(M) {
     const D = p.branch ? N(w, 'gilD2') : N(w, 'gilD'), S0 = p.branch ? N(w, 'gilS2') : N(w, 'gilS');
     if (!(D > 0)) continue;
     p.gR = D / 2000; p.gS = (S0 || 7) / 1000; p.gD = D; p.gSmm = S0 || 7;
+    // 0.11: в просадочных труба — в нижней части гильзы (снизу 10 см, запас сверху), ось гильзы выше оси трубы на gE (п. 18.11)
+    p.gE = Math.max(0, N(w, p.branch ? 'gilE2' : 'gilE')); p.gz = p.z + p.gE;
     const wi = M.wallIn(p.ang) - (M.rect ? .002 : 0);   // у плоской стены торец гильзы чуть перед гранью — видно изнутри
     const gl = M.gilL + (M.rect ? .004 : 0); p.sl = [[wi, wi + gl]].concat(p.through ? [[-wi - gl, -wi]] : []);
   }
   M.gil = M.pipes.filter(p => p.sl).reduce((n, p) => n + p.sl.length, 0);
+  // просадочные: труба в нижней части гильзы — зазор снизу (gBot) и сверху (gTop), мм
+  const ge = M.pipes.filter(p => p.sl && p.gE > .001);
+  M.gilEcc = ge.length ? {bot: Math.round(Math.min(...ge.map(p => p.gR - p.gS - p.ro - p.gE)) * 1000), top: Math.round(Math.min(...ge.map(p => p.gR - p.gS - p.ro + p.gE)) * 1000)} : null;
 }
 
 /* ---------------- разрез: линия в плане (локальные оси) o + s·u ---------------- */
@@ -410,41 +444,48 @@ VV.stepsOf = function (M) {
   const gl = M.pipes.filter(p => p.sl), gilTxt = [...new Set(gl.map(p => `Ø${p.gD}×${p.gSmm}`))].join(' и ');
   const pipeStep = (after) => ({els: ['pipe'].concat(gl.length && !M.rect ? ['gil'] : []), t: `Трубы Ду${Du}${M.du ? ` и ду${du}` : ''}`, fc: `заделка — бетон ${fmt(N(w, 'zad'))} м³${N(w, 'upr') ? ` · упор ${fmt(N(w, 'upV'))} м³` : ''}`,
     todo: gl.length ? [M.rect ? `В гильзы стен; низ трубы — ${H(M.otst)} м.` : `Гильзы ${gilTxt}, L ${mm(M.gilL)} — заподлицо изнутри.`,
-      `${M.rect ? 'Зазор' : `Трубы — в гильзы, низ ${H(M.otst)} м; зазор`} — прядь и раствор.`,
+      M.rect ? (M.gilEcc ? 'Труба — в низ гильзы.' : 'Гильзы — по осям труб.') : `Трубы — в ${M.gilEcc ? 'низ гильз' : 'гильзы'}, низ ${H(M.otst)} м.`,
       N(w, 'upr') ? `Упор под фасонные части — бетон М100.` : `Арматура — по узлу${S(w, 'uzel') ? ' ' + S(w, 'uzel') : ''} (в 3D пока нет).`]
       : [`В проёмы ${after}; низ трубы — ${H(M.otst)} м.`,
       `Арматура — по узлу${S(w, 'uzel') ? ' ' + S(w, 'uzel') : ''} (в 3D пока нет).`,
-      N(w, 'upr') ? `Упор под фасонные части — бетон М100.` : 'Проёмы — бетоном, снаружи битум.'],
-    chk: 'Отметки и уклоны труб.'});
+      N(w, 'upr') ? `Упор под фасонные части — бетон М100.` : M.gzWet ? 'Проёмы — бетоном, снаружи битум.' : 'Проёмы — бетоном.'],
+    chk: gl.length ? 'Отметки; зазор — прядь и герметик, не раствор.' : 'Отметки и уклоны труб.'});
+  // 0.11: гидроизоляция — по грунтовым условиям: битум только в зонах (вода — снизу до УГВ + запас, пучение — сверху до промерзания)
+  const zTxt = [M.gzWet ? `снизу до ${H(M.zW)} м (УГВ + ${fmt(M.gzap, 1)})` : '', M.fz > 0 ? `сверху до ${fmt(M.fz)} м от земли` : ''].filter(Boolean).join(', ');
+  const tapeAt = z => M.tapes.some(t => Math.abs(t.z - z) < .03);
   if (!M.rect) {
-    out.push(M.okl ? {els: ['coat'], pre: true, nohi: true, t: 'Мастика — до сборки', fc: `снаружи ${fmt(gout)} м² · оклеечная`,
-      todo: ['На земле: огрунтовка и битумная мастика.', 'Гидроизол наклеивается после сборки, 2–3 слоя.', 'Днище снизу — до укладки, в 2–3 слоя.'], chk: 'Без пропусков; кромки — для нахлёста.'}
-      : {els: ['coat'], pre: true, nohi: true, t: 'Битум — до сборки', fc: `снаружи ${fmt(gout)} м²`,
-      todo: ['На земле: огрунтовка, горячий битум 2 слоя — кольца и плиты снаружи.', 'Днище снизу и с торцов — тоже.', 'Остыл — в котлован.'], chk: 'Без пропусков.'});
+    if (M.okl) out.push({els: ['coat'], pre: true, nohi: true, t: 'Мастика — до сборки', fc: `снаружи ${fmt(gout)} м² · оклеечная`,
+      todo: ['На земле: огрунтовка и битумная мастика.', 'Гидроизол наклеивается после сборки, 2–3 слоя.', 'Днище снизу — до укладки, в 2–3 слоя.'], chk: 'Без пропусков; кромки — для нахлёста.'});
+    else if (M.gzOut) out.push({els: ['coat'], pre: true, nohi: true, t: 'Битум — до сборки', fc: `снаружи ${fmt(gout)} м²`,
+      todo: M.gzOld ? ['На земле: огрунтовка, горячий битум 2 слоя — кольца и плиты снаружи.', 'Днище снизу и с торцов — тоже.', 'Остыл — в котлован.']
+        : ['На земле: огрунтовка, горячий битум 2 слоя.', `Снаружи ${zTxt}.`, M.gzWet ? 'Днище снизу и с торцов — асфальт 10 мм.' : 'Пучинистые грунты: меньше смерзание.'],
+      chk: M.gzOld ? 'Без пропусков.' : 'Без пропусков; граница зоны — по отметке.'});
     for (const e of M.els) {
       const base = {els: [e.key], fc: kgs(e.mark), kind: e.kind};
       if (e.kind === 'ПН') {
         const bt = M.grunt === 'I' ? ['Дно котлована выровнять, не нарушая грунт.', 'Песчаная подготовка 100 мм — разровнять и уплотнить.', `Низ подготовки — ${H(M.zBaseTop)} м от земли.`]
           : M.grunt === 'II' ? ['Бетонная подготовка М50 — 100 мм.', 'По ней гидроизоляция 10 мм.', `Низ подготовки — ${H(M.zBaseTop)} м от земли.`]
-          : ['Уплотнить грунт в основании на глубину 1 м.', 'Бетонная подготовка М50 — 100 мм.', 'Водоупорный замок вокруг низа — по ТПР.'];
-        out.push({els: ['base'], kind: 'BASE', t: 'Основание под колодец', fc: `${M.gruntName}${N(w, 'v50r') ? ` · бетон М50 ${fmt(N(w, 'v50r'))} м³` : ''} · ТПР 901-09-11.84, Альбом II, АС-1`, todo: bt, chk: 'Отметка и горизонтальность основания.'});
+          : ['Уплотнить грунт в основании на глубину 1 м.', 'Бетонная подготовка М50 — 100 мм.', 'Водоупорный замок — по ТПР.'];
+        out.push({els: ['base'], kind: 'BASE', t: 'Основание под колодец', fc: `${M.gruntName}${N(w, 'v50r') ? ` · М50 ${fmt(N(w, 'v50r'))} м³` : ''} · Альбом II, АС-1`, todo: bt, chk: 'Отметка и горизонтальность.'});
         out.push({...base, t: `Плита днища ${e.mark}`, todo: [M.grunt === 'I' ? 'На песчаную подготовку строго горизонтально.' : 'На цементно-песчаный раствор 20 мм, строго горизонтально.', `Верх плиты — дно колодца: ${H(0)} м от земли.`], chk: 'Горизонтальность плиты.'});
       } else if (e.kind === 'КС') {
         const sm = seamOf(e.first ? 'pn' : 'ring', e)[0], n = VV.skCount(M, e.key);
+        const tU = e.first ? M.tapes.some(t => t.lo === 0) : tapeAt(e.z0 - SEAM / 2);
         const todo = [sm ? `${msTxt(sm)} — на ${e.first ? 'днище' : 'кольцо'}, затем раствор.` : 'На раствор М100, шов 10 мм, соосно.',
           e.first ? `Проёмы под трубы — ${M.du ? 3 : 2} шт., низ ${H(M.otst)} м.` : `Верх кольца — ${H(e.z1)} м.`];
         if (n) todo.push(skT(n));
-        out.push({...base, els: sm ? [e.key, sm.key] : [e.key], t: `Кольцо ${e.mark}${e.first ? ' — нижнее' : ''}`, todo, chk: 'Вертикальность; швы заполнены.'});
+        out.push({...base, els: sm ? [e.key, sm.key] : [e.key], t: `Кольцо ${e.mark}${e.first ? ' — нижнее' : ''}`, todo,
+          chk: tU ? (e.first ? 'Вертикальность; стык с днищем — лентой Г-образно.' : 'Вертикальность; стык снизу — лентой.') : 'Вертикальность; швы заполнены.'});
         if (e.first) out.push(pipeStep('нижнего кольца'));
       } else if (e.kind === 'ПП') {
         const sm = seamOf('pp', e)[0];
         out.push({...base, els: sm ? [e.key, sm.key] : [e.key], t: `Плита перекрытия ${e.mark}`,
           todo: [sm ? `${msTxt(sm)} — на кольцо, полкой наружу.` : 'На раствор М100, шов 10 мм.',
             M.g1000 ? 'Отверстие Ø1000 — над скобами.' : `Лаз Ø700 — над скобами${M.pg ? (M.pgShift > .005 ? `; гидрант — со сдвигом ${mm(M.pgShift)} мм к лазу` : ', гидрант по центру') : ''}.`, `Верх плиты — ${H(e.z1)} м.`],
-          chk: M.pg && !M.g1000 ? `Гидрант — в 200 мм от оси люка${M.pgShift > .005 ? '' : ' (по центру колодца)'}.` : 'Лаз над скобами.'});
+          chk: M.pg && !M.g1000 ? `Гидрант — в 200 мм от оси люка${M.pgShift > .005 ? '' : ' (в центре)'}.` : 'Лаз над скобами.'});
       } else if (e.kind === 'К10') {
         const sm = M.seams.find(s => s.above === e), n = VV.skCount(M, e.key);
-        out.push({...base, els: sm ? [e.key, sm.key] : [e.key], t: `Кольцо горловины ${e.mark}`, todo: [sm ? `${msTxt(sm)} на стыке.` : 'На раствор М100, соосно отверстию.', 'Горловина Ø1000 — СНиП РК, п. 11.62.'].concat(n ? [skT(n)] : []), chk: 'Соосность с отверстием плиты.'});
+        out.push({...base, els: sm ? [e.key, sm.key] : [e.key], t: `Кольцо горловины ${e.mark}`, todo: [sm ? `${msTxt(sm)} на стыке.` : 'На раствор М100, соосно.', 'Горловина Ø1000 — СНиП РК, п. 11.62.'].concat(n ? [skT(n)] : []), chk: 'Соосность с отверстием плиты.'});
       } else if (e.kind === 'П10') {
         const sm = M.seams.find(s => s.above === e);
         out.push({...base, els: sm ? [e.key, sm.key] : [e.key], t: 'Плита ПП10-2 на горловину 1000', todo: [sm ? `${msTxt(sm)} на стыке.` : 'На раствор М100.', 'Лазом к стенке со скобами — скобы ведут прямо в люк.',
@@ -453,22 +494,27 @@ VV.stepsOf = function (M) {
     }
   } else {
     const ax = M.A, by = M.B, beams = M.beams, plates = M.plates;
-    out.push(M.okl ? {els: ['coat'], pre: true, nohi: true, t: 'Мастика на сборные — до монтажа', fc: 'днище, плиты, кольца горловин · оклеечная',
-      todo: ['На земле: огрунтовка и битумная мастика.', 'Гидроизол наклеивается после сборки, 2–3 слоя.', 'Днище снизу — до укладки, в 2–3 слоя.'], chk: 'Без пропусков; кромки — для нахлёста.'}
-      : {els: ['coat'], pre: true, nohi: true, t: 'Битум на сборные — до монтажа', fc: 'днище, плиты, кольца горловин',
-      todo: ['На земле: огрунтовка, горячий битум 2 слоя.', 'Днище — снизу и с торцов, плиты — сверху и с торцов.', 'Остыл — в котлован.'], chk: 'Без пропусков.'});
-    const bt = M.grunt === 'III' ? ['Уплотнить грунт в основании на глубину 1 м.', 'Бетонная подготовка М50 — 100 мм.', 'Водоупорный замок вокруг низа — по ТПР.']
+    const plC = M.plates.some(p => KC.coated(M, p.z0, p.z1)), gC = M.hatches.some(g => g.els.some(e => ['КГ', 'КО', 'НБ'].includes(e.kind) && KC.coated(M, e.z0, e.z1)));
+    const what = M.gzOld ? 'днище, плиты, кольца горловин' : [M.gzWet ? 'днище' : '', plC ? 'плиты' : '', gC ? 'кольца горловин' : ''].filter(Boolean).join(', ');
+    if (M.okl) out.push({els: ['coat'], pre: true, nohi: true, t: 'Мастика — до монтажа', fc: 'днище, плиты, горловины · оклеечная',
+      todo: ['На земле: огрунтовка и битумная мастика.', 'Гидроизол — после сборки, 2–3 слоя.', 'Днище снизу — до укладки.'], chk: 'Без пропусков; кромки — под нахлёст.'});
+    else if (what) out.push({els: ['coat'], pre: true, nohi: true, t: M.gzOld ? 'Битум на сборные — до монтажа' : 'Битум — до монтажа', fc: what,
+      todo: M.gzOld ? ['На земле: огрунтовка, горячий битум 2 слоя.', 'Днище — снизу и с торцов, плиты — сверху и с торцов.', 'Остыл — в котлован.']
+        : ['На земле: огрунтовка, горячий битум 2 слоя.', zTxt ? `${zTxt[0].toUpperCase() + zTxt.slice(1)}.` : 'Снаружи — по зонам.', M.gzWet ? 'Днище — снизу и с торцов асфальт 10 мм.' : 'Остыл — в котлован.'], chk: 'Без пропусков.'});
+    const bt = M.grunt === 'III' ? ['Уплотнить грунт в основании на глубину 1 м.', 'Бетонная подготовка М50 — 100 мм.', 'Водоупорный замок — по ТПР.']
       : ['Бетонная подготовка М50 — 100 мм.', M.grunt === 'II' ? 'По ней гидроизоляция 10 мм.' : 'Поверхность — горизонтально, по отметке.', `Низ подготовки — ${H(M.zBaseTop)} м от земли.`];
     out.push({els: ['base'], kind: 'BASE', t: 'Основание под колодец', fc: `${M.gruntName} · бетон М50 ${fmt(N(w, 'v50'))} м³ · Альбом IV, АС-1`, todo: bt, chk: 'Отметка и горизонтальность.'});
     out.push({els: [M.dE.key], t: `Плита днища ${M.dE.mark}`, fc: kgs(M.dE.mark), kind: 'ДН', todo: ['На раствор 20 мм, строго горизонтально.', `${mm(M.dX * 2)}×${mm(M.dY * 2)}×${mm(M.pnH)}; верх — дно, ${H(0)} м.`], chk: 'Горизонтальность плиты.'});
     const nsk = Math.floor(M.V / .3 + 1e-6);
     out.push({els: ['form', 'skw', 'arm'].concat(gl.length ? ['gil'] : []), kind: 'FORM', t: 'Стены: опалубка и скобы', fc: `t = ${mm(M.t)} · Hр ${mm(M.V)}${N(w, 'set10') ? ` · сеток ⌀10 — ${N(w, 'set10')}` : ''}${N(w, 'setR') ? ` · С3Вр1 ${fmt(N(w, 'setR'), 0)} кг` : ''}`,
       todo: [`Опалубка ${mm(ax)}×${mm(by)} в свету.`, `Скобы ⌀18 — сквозь щит под лазом: ${nsk} шт.${nG > 1 ? ` ×${nG}` : ''}, через 300.`,
-        gl.length ? `Гильзы ${gilTxt} — по осям труб${N(w, 'set10') ? ', сетки ⌀10' : ''}.`
+        gl.length ? `Гильзы ${gilTxt} — ${M.gilEcc ? 'над осями труб' : 'по осям труб'}${N(w, 'set10') ? ', сетки ⌀10' : ''}.`
           : `Проёмы под трубы${N(w, 'set10') ? ' + сетки ⌀10' : ''}${N(w, 'setR') ? '; сетка С3Вр1 у граней' : ''}.`],
-      chk: 'Скобы — заделка 110–120; арматура стен — условно (КЖ).'});
+      chk: M.seis ? 'Скобы — заделка 110–120; сетка С3Вр1 — по ТПР VI.88.' : M.kzh ? 'Скобы — заделка 110–120; арматура стен — условно (КЖ).' : 'Скобы — заделка 110–120; стены — бетон без арматуры (ТПР).'});
     out.push({els: ['wall'], kind: 'СТ', t: 'Стены — бетон М150', fc: `${fmt(N(w, 'v150'))} м³ · монолит`,
-      todo: ['Из автобетоносмесителя, слоями 0,3–0,5 м, вибрировать.', `Верх стен — ${H(M.V)} м, горизонтально.`, 'Распалубка — по прочности; снаружи битум.'],
+      todo: ['Из автобетоносмесителя, слоями 0,3–0,5 м, вибрировать.', `Верх стен — ${H(M.V)} м, горизонтально.`,
+        M.okl || M.gzOld ? 'Распалубка — по прочности; снаружи битум.' : !KC.coated(M, 0, M.V) ? 'Распалубка — по прочности.'
+          : M.gzWet && M.fz > 0 ? 'Распалубка; битум снаружи — по зонам.' : M.gzWet ? `Распалубка; битум снаружи до ${H(M.zW)} м.` : `Распалубка; битум сверху до ${fmt(M.fz)} м.`],
       chk: 'Скобы — одной вертикалью.'});
     out.push(pipeStep('стен'));
     if (beams.length) out.push({els: beams.map(b => b.key), t: `Балки Б8${beams.length > 1 ? ' ×' + beams.length : ''}`, fc: kgs('Б8'), kind: 'БЛ',
@@ -480,12 +526,17 @@ VV.stepsOf = function (M) {
     M.hatches.forEach(g => g.els.forEach(e => gorlStep(M, e, out, {els: [e.key], fc: kgs(e.mark), kind: e.kind}, kgs, H, nG)));
     // горловины одинаковые: шаги по горловинам объединяем (одна строка на элемент, ×nG)
   }
-  out.push(M.okl ? {els: ['coatfin'], nohi: true, fin: true, t: 'Гидроизоляция оклеечная', fc: `снаружи ${fmt(gout)} м² · вода выше перекрытия`,
-    todo: [`Гидроизол 2–3 слоя на мастике — до ${H(M.zOkl)} м (УГВ + 0,5 м).`, 'Защитная стенка по гидроизоляции; проходы труб — на мастике.', `Внутри — ${fmt(gin)} м² (по проекту).`],
-    chk: 'Вне ТПР: прочность и всплытие — КЖ.'}
-    : {els: ['coatfin'], nohi: true, fin: true, t: 'Гидроизоляция — доделка', fc: `снаружи ${fmt(gout)} м² · внутри ${fmt(gin)} м²`,
+  const nT = M.tapes.length, inTxt = M.pII ? 'Внутри стены и днище — горячий битум 4–5 мм.' : `Внутри${M.gzOld ? '' : ` до ${H(M.zW)} м`} — Битрон-11, ${fmt(M.bitron, 1)} кг/м².`;
+  if (M.okl) out.push({els: ['coatfin'], nohi: true, fin: true, t: 'Гидроизоляция оклеечная', fc: `снаружи ${fmt(gout)} м² · УГВ выше перекрытия`,
+    todo: [`Гидроизол 2–3 слоя на мастике до ${H(M.zOkl)} м.`, 'Защитная стенка; проходы труб — на мастике.', `Внутри — ${fmt(gin)} м² (по проекту).`],
+    chk: 'Вне ТПР: прочность и всплытие — КЖ.'});
+  else if (M.gzOld) out.push({els: ['coatfin'], nohi: true, fin: true, t: 'Гидроизоляция — доделка', fc: `снаружи ${fmt(gout)} м² · внутри ${fmt(gin)} м²`,
     todo: [`Проходы труб${seis ? ', МС' : ''}, сколы — битумом.`, M.rect ? 'Стены снаружи — битум 2 слоя.' : 'Швы снаружи — битумом.', `Внутри — ${fmt(gin)} м² (по проекту).`],
     chk: 'Засыпка — после остывания битума.'});
+  else if (M.gzWet || gin > 0 || nT) out.push({els: ['coatfin'], nohi: true, fin: true, t: 'Гидроизоляция — доделка',
+    fc: [nT ? `лента ${fmt(N(w, 'lenta'))} м²` : '', gin ? `внутри ${fmt(gin)} м²` : ''].filter(Boolean).join(' · ') || `снаружи ${fmt(gout)} м²`,
+    todo: [M.gzWet ? `Проходы труб${seis ? ', МС' : ''}, сколы — битумом.` : '', gin ? inTxt : '', nT ? `Лента ГИ-Г — ${nT} ${nT % 10 === 1 && nT % 100 !== 11 ? 'стык' : nT % 10 >= 2 && nT % 10 <= 4 && (nT % 100 < 12 || nT % 100 > 14) ? 'стыка' : 'стыков'} в зоне воды.` : ''].filter(Boolean),
+    chk: M.gzOut ? 'Засыпка — после остывания битума.' : 'Покрытие без пропусков.'});
   // объединить одинаковые шаги горловин (прямоугольные с несколькими люками)
   if (M.rect && nG > 1) {
     const res = [], seen = new Map();
@@ -514,7 +565,7 @@ function gorlStep(M, e, out, base, kgs, H, nG = 1) {
   else if (e.kind === 'КГ' || e.kind === 'КО') {
     const lines = [];
     const sp = sms.find(s => s.kind === 'ppg'), sk = sms.find(s => s.kind === 'gko'), sg = M.seams.find(s => s.kind === 'gorl' && s.below === e);
-    if (sp) lines.push(`На стыке с плитой — ${sp.mark} ×4 на осях (длинная полка внутрь).`);
+    if (sp) lines.push(`На стыке с плитой — ${sp.mark} ×4 (длинная полка внутрь).`);
     if (sk) lines.push(`На верх ${sk.below.kind === 'НБ' ? 'набетонки' : 'КС7'} — МС-5 ×4 на осях: короткая полка внутрь вниз.`);
     if (e.kind === 'КО' && M.dobor === 'набетонка') lines.push(`На раствор М100${M.nabJ > .0005 ? `, шов под КО6 — ${mm(SEAM + M.nabJ)} мм (добор)` : ''}.`, (M.hatches[e.hatch] || {}).nab ? 'Добор — набетонкой ниже: КО6 только под люк.' : 'Без округления: люк — точно на отметке.');
     else if (e.kind === 'КО') lines.push(`Добор до отметки люка; каждое — на раствор М100${M.seis ? ', между КО6 без МС' : ''}.`, 'Количество округлено вверх: люк чуть выше, а не ниже.');
@@ -619,12 +670,15 @@ VV.buildScene = function (M, THREE) {
     // гильза — стальной футляр (у круглых — от внутренней грани кольца наружу на L, у монолитных — на толщину стены);
     // зазор между трубой и гильзой на торцах — смоляная прядь и раствор (полоса цвета раствора)
     for (const [a, b] of p.sl || []) {
-      const ln = b - a, md = (a + b) / 2, ri = p.gR - p.gS, og = {...o, part: 'sleeve', m: {metalness: .55, roughness: .45}};
-      put(new THREE.CylinderGeometry(p.gR, p.gR, ln, 48, 1, true).rotateZ(Math.PI / 2).translate(md, 0, 0), C.sleeve, 'gil', og);
-      put(new THREE.CylinderGeometry(ri, ri, ln, 48, 1, true).rotateZ(Math.PI / 2).translate(md, 0, 0), C.sleeve, 'gil', og);
-      for (const x of [a, b]) { put(new THREE.RingGeometry(ri, p.gR, 48).rotateY(Math.PI / 2).translate(x, 0, 0), C.sleeve, 'gil', og);
+      const ln = b - a, md = (a + b) / 2, ri = p.gR - p.gS, ge = p.gE || 0, og = {...o, part: 'sleeve', m: {metalness: .55, roughness: .45}};
+      put(new THREE.CylinderGeometry(p.gR, p.gR, ln, 48, 1, true).rotateZ(Math.PI / 2).translate(md, 0, ge), C.sleeve, 'gil', og);
+      put(new THREE.CylinderGeometry(ri, ri, ln, 48, 1, true).rotateZ(Math.PI / 2).translate(md, 0, ge), C.sleeve, 'gil', og);
+      for (const x of [a, b]) { put(new THREE.RingGeometry(ri, p.gR, 48).rotateY(Math.PI / 2).translate(x, 0, ge), C.sleeve, 'gil', og);
         const inn = Math.abs(x) < M.wallIn(p.ang) + .001, xs = x + (x === a ? 1 : -1) * (inn && M.rect ? .0005 : .005);
-        put(new THREE.RingGeometry(p.ro + .001, ri - .001, 48).rotateY(Math.PI / 2).translate(xs, 0, 0), C.mortar, 'gil', {...o, part: 'seal', m: {roughness: .95}}); }
+        // заделка зазора (прядь + герметик): кольцо между трубой и гильзой; у просадочных — несоосное (rotateY: x фигуры → −z)
+        const sh = new THREE.Shape(); sh.absarc(-ge, 0, ri - .001, 0, Math.PI * 2, false);
+        const hp = new THREE.Path(); hp.absarc(0, 0, p.ro + .001, 0, Math.PI * 2, true); sh.holes.push(hp);
+        put(new THREE.ShapeGeometry(sh, 48).rotateY(Math.PI / 2).translate(xs, 0, 0), C.mortar, 'gil', {...o, part: 'seal', m: {roughness: .95}}); }
     }
   }
   // скобы
@@ -666,46 +720,91 @@ VV.buildScene = function (M, THREE) {
   const topCoat = (outer, holes, z, of, Lv) => { holes.forEach(h => outer.holes.push(h)); put(ext(outer, .003, 96), C.coat, 'coat', {pos: [0, 0, z + .001], lvl: Lv, of, m: cm}); };
   const disc = (cx, cy, r) => { const q = new THREE.Shape(); q.absarc(cx, cy, r, 0, Math.PI * 2, false); return q; };
   const foot = g => circ(g.x, g.y, .426, true);   // след горловины (КС7 / КО6 Ø840) на плите
+  // 0.11: битум — только в зонах гидроизоляции (вода — снизу, пучение — сверху); плиты — целиком, если зона до них доходит
+  const spC = (cx, cy, r, z0, z1, of, Lv, seg) => { for (const [a, b] of KC.coatSpans(M, z0, z1)) shellC(cx, cy, r, a, b, of, Lv, seg); };
+  const spB = (x0, y0, x1, y1, z0, z1, of, Lv) => { for (const [a, b] of KC.coatSpans(M, z0, z1)) shellB(x0, y0, x1, y1, a, b, of, Lv); };
+  const plC = e => KC.coated(M, e.z0, e.z1);
   for (const e of M.els) {
     const Lv = lvl.get(e.key);
-    if (e.kind === 'КС' || e.kind === 'ПП') shellC(0, 0, M.Rout + .003, e.z0, e.z1, e.key, Lv);
-    else if (e.kind === 'ПН') shellC(0, 0, e.rout + .003, e.z0, e.z1, e.key, Lv);
-    else if (e.kind === 'К10' || e.kind === 'П10') shellC(e.cx, e.cy, e.rout + .003, e.z0, e.z1, e.key, Lv, 64);
-    else if (e.kind === 'КГ' || e.kind === 'НБ' || e.kind === 'РВ') shellC(e.cx, e.cy, .423, e.z0, e.z1, e.key, Lv, 64);
-    else if (e.kind === 'КО') for (let i = 0; i < e.q; i++) shellC(e.cx, e.cy, .423, e.z0 + i * .08, e.z0 + i * .08 + .07, e.key, Lv, 64);
-    else if (e.kind === 'ЛЮК' && e.bed) shellC(e.cx, e.cy, .423, e.bed[0], e.bed[1], e.key, Lv, 64);   // постель под люком
-    else if (e.kind === 'ДН') shellB(e.x0, e.y0, e.x1, e.y1, e.z0, e.z1, e.key, Lv);
-    else if (e.kind === 'СТ') shellB(e.x0, e.y0, e.x1, e.y1, e.z0, e.z1, e.key, Lv);
-    else if (e.kind === 'ПЛ') shellB(e.x0, e.y0, e.x1, e.y1, e.z0, e.z1, e.key, Lv);
-    if (e.pads) for (const [x0, y0, x1, y1, z0, z1] of e.pads) shellB(x0, y0, x1, y1, z0, z1, e.key, Lv, true);
+    if (e.kind === 'КС') spC(0, 0, M.Rout + .003, e.z0, e.z1, e.key, Lv);
+    else if (e.kind === 'ПП') { if (plC(e)) shellC(0, 0, M.Rout + .003, e.z0, e.z1, e.key, Lv); }
+    else if (e.kind === 'ПН') { if (M.gzWet) shellC(0, 0, e.rout + .003, e.z0, e.z1, e.key, Lv); }
+    else if (e.kind === 'К10') spC(e.cx, e.cy, e.rout + .003, e.z0, e.z1, e.key, Lv, 64);
+    else if (e.kind === 'П10') { if (plC(e)) shellC(e.cx, e.cy, e.rout + .003, e.z0, e.z1, e.key, Lv, 64); }
+    else if (e.kind === 'КГ' || e.kind === 'НБ' || e.kind === 'РВ') spC(e.cx, e.cy, .423, e.z0, e.z1, e.key, Lv, 64);
+    else if (e.kind === 'КО') for (let i = 0; i < e.q; i++) spC(e.cx, e.cy, .423, e.z0 + i * .08, e.z0 + i * .08 + .07, e.key, Lv, 64);
+    else if (e.kind === 'ЛЮК' && e.bed) spC(e.cx, e.cy, .423, e.bed[0], e.bed[1], e.key, Lv, 64);   // постель под люком
+    else if (e.kind === 'ДН') { if (M.gzWet) shellB(e.x0, e.y0, e.x1, e.y1, e.z0, e.z1, e.key, Lv); }
+    else if (e.kind === 'СТ') spB(e.x0, e.y0, e.x1, e.y1, e.z0, e.z1, e.key, Lv);
+    else if (e.kind === 'ПЛ') { if (plC(e)) shellB(e.x0, e.y0, e.x1, e.y1, e.z0, e.z1, e.key, Lv); }
+    if (e.pads && plC(e)) for (const [x0, y0, x1, y1, z0, z1] of e.pads) shellB(x0, y0, x1, y1, z0, z1, e.key, Lv, true);
     // верхние поверхности
-    if (e.kind === 'ПП') { const h0 = e.holes[0]; topCoat(disc(0, 0, M.Rout + .003), [M.g1000 ? circ(h0.x, h0.y, .586, true) : foot(M.hatches[0])], e.z1, e.key, Lv); }
-    else if (e.kind === 'П10') topCoat(disc(e.cx, e.cy, e.rout + .003), [foot(M.hatches[0])], e.z1, e.key, Lv);
-    else if (e.kind === 'ПН') topCoat(disc(0, 0, e.rout + .003), [circ(0, 0, M.Rout + .002, true)], e.z1, e.key, Lv);
-    else if (e.kind === 'ДН') topCoat(rectP(e.x0 - .003, e.y0 - .003, e.x1 + .003, e.y1 + .003), [rectP(M.wallE.x0 - .002, M.wallE.y0 - .002, M.wallE.x1 + .002, M.wallE.y1 + .002, true)], e.z1, e.key, Lv);
-    else if (e.kind === 'СТ') topCoat(rectP(e.x0 - .003, e.y0 - .003, e.x1 + .003, e.y1 + .003), [rectP(e.ix0, e.iy0, e.ix1, e.iy1, true)], e.z1, e.key, Lv);   // под плитами — внутри плит, не видно
-    else if (e.kind === 'ПЛ') topCoat(rectP(e.x0, e.y0, e.x1, e.y1), M.hatches.filter(g => g.plate === e.it).map(foot), e.z1, e.key, Lv);
+    if (e.kind === 'ПП') { if (plC(e)) { const h0 = e.holes[0]; topCoat(disc(0, 0, M.Rout + .003), [M.g1000 ? circ(h0.x, h0.y, .586, true) : foot(M.hatches[0])], e.z1, e.key, Lv); } }
+    else if (e.kind === 'П10') { if (plC(e)) topCoat(disc(e.cx, e.cy, e.rout + .003), [foot(M.hatches[0])], e.z1, e.key, Lv); }
+    else if (e.kind === 'ПН') { if (M.gzWet) topCoat(disc(0, 0, e.rout + .003), [circ(0, 0, M.Rout + .002, true)], e.z1, e.key, Lv); }
+    else if (e.kind === 'ДН') { if (M.gzWet) topCoat(rectP(e.x0 - .003, e.y0 - .003, e.x1 + .003, e.y1 + .003), [rectP(M.wallE.x0 - .002, M.wallE.y0 - .002, M.wallE.x1 + .002, M.wallE.y1 + .002, true)], e.z1, e.key, Lv); }
+    else if (e.kind === 'СТ') { if (KC.coated(M, e.z1 - .01, e.z1)) topCoat(rectP(e.x0 - .003, e.y0 - .003, e.x1 + .003, e.y1 + .003), [rectP(e.ix0, e.iy0, e.ix1, e.iy1, true)], e.z1, e.key, Lv); }   // под плитами — внутри плит, не видно
+    else if (e.kind === 'ПЛ') { if (plC(e)) topCoat(rectP(e.x0, e.y0, e.x1, e.y1), M.hatches.filter(g => g.plate === e.it).map(foot), e.z1, e.key, Lv); }
   }
-  // армирование стен (прямоугольные), видно в шаге «опалубка и скобы» и в разрезе:
-  // проёмы труб Ду ≥ 500 — сетки ф10 A-I у обеих граней (ТПР 901-09-11.84, Альбом IV, АС-2: 300 + Ду + 300, стержни доводить до опор);
-  // сами стены — условно, сетка 200×200 у обеих граней (сейсмика — С3Вр1 по Альбому VI.88; расчётное армирование — раздел КЖ)
-  if (M.rect && M.wallE) {
-    const e = M.wallE, cov = (M.grunt === 'I' ? .02 : .025) + .005, ax = M.A / 2, by = M.B / 2, t = M.t, V = M.V, grid = [], ring = [];
-    const B = (arr, x0, y0, z0, x1, y1, z1) => arr.push([x0, y0, z0, x1, y1, z1]);
-    const sp = .2, zs = []; for (let z = .1; z < V - .05; z += sp) zs.push(z);
-    for (const sg of [-1, 1]) for (const [k, d] of [[0, cov], [1, t - cov]]) {   // k: 0 — у внутренней грани, 1 — у наружной
-      const xw = sg * (ax + d), yw = sg * (by + d), lx = ax + (k ? t - cov : cov), ly = by + (k ? t - cov : cov);
-      for (let y = -ly; y <= ly + 1e-6; y += sp) B(grid, xw, y, .04, xw, y, V - .03);
-      for (const z of zs) B(grid, xw, -ly, z, xw, ly, z);
-      for (let x = -lx; x <= lx + 1e-6; x += sp) B(grid, x, yw, .04, x, yw, V - .03);
-      for (const z of zs) B(grid, -lx, yw, z, lx, yw, z);
+  // 0.11: лента ГИ-Г на стыках колец в зоне воды (как в К1): перекрывающиеся полосы (КО6 через 80 мм) — одной полосой; у днища — Г-образно
+  if (M.tapes.length) {
+    const tb = [], tW = M.tapeW, gTop = h => { const g = M.hatches[h] || M.hatches[0]; return g.ko ? g.ko.z1 : g.rings.length ? g.rings[g.rings.length - 1].z1 : 1e9; };
+    const own = ['КС', 'ПП', 'К10', 'П10', 'КГ', 'КО', 'НБ'];
+    for (const t of M.tapes) {
+      const z0 = Math.max(t.z - tW / 2, t.lo >= 0 ? t.lo : -1e9), z1 = t.part === 'gB' ? Math.min(t.z + tW / 2, gTop(t.hatch)) : t.z + tW / 2, L = (lvl.get(t.below ? t.below.key : '') ?? 0) + .5;
+      let ow = null; for (const e of M.els) if (own.includes(e.kind) && Math.abs((e.cx || 0) - t.cx) < .01 && Math.abs((e.cy || 0) - t.cy) < .01 && e.z1 > t.z && (!ow || e.z0 < ow.z0)) ow = e;
+      const pv = tb.find(q => q.cx === t.cx && q.cy === t.cy && q.r === t.r && z0 <= q.z1 + .005 && z1 >= q.z0 - .005);
+      if (pv) { pv.z0 = Math.min(pv.z0, z0); pv.z1 = Math.max(pv.z1, z1); if (ow && (!pv.of || ow.z0 > pv.ofz)) { pv.of = ow.key; pv.ofz = ow.z0; } }
+      else tb.push({cx: t.cx, cy: t.cy, r: t.r, z0, z1, L, seg: t.part === 'r' ? 96 : 64, of: ow ? ow.key : null, ofz: ow ? ow.z0 : -1e9});
     }
+    for (const q of tb) { const r = q.r + .007, mt = KC._.tapeMatOf ? KC._.tapeMatOf(THREE, M, q.z1 - q.z0, r) : null; if (mt) xmats.push(mt);
+      put(new THREE.CylinderGeometry(r, r, q.z1 - q.z0, q.seg, 1, true).rotateX(Math.PI / 2).translate(q.cx, q.cy, (q.z0 + q.z1) / 2), C.tape, 'tape', Object.assign({lvl: q.L, edges: true, of: q.of}, mt ? {mat: mt} : {m: {roughness: .32}})); }
+    const pn = M.pnE, half = tW / 2;
+    if (pn && pn.rout > M.Rout + .02 && M.tapes.some(t => t.lo === 0)) {
+      const ledge = pn.rout - M.Rout, r1 = M.Rout + Math.min(half, ledge) + .004, L = (lvl.get(pn.key) ?? 0) + .5, rest = half - ledge, ofr = M.rings[0] ? M.rings[0].key : null;
+      const sh = new THREE.Shape(); sh.absarc(0, 0, r1, 0, Math.PI * 2, false); sh.holes.push(circ(0, 0, M.Rout + .004, true));
+      put(ext(sh, .003, 96), C.tape, 'tape', {pos: [0, 0, pn.z1 + .005], lvl: L, edges: true, of: ofr, m: {roughness: .32}});
+      if (rest > .005) put(new THREE.CylinderGeometry(pn.rout + .008, pn.rout + .008, rest, 96, 1, true).rotateX(Math.PI / 2).translate(0, 0, pn.z1 - rest / 2), C.tape, 'tape', {lvl: L, edges: true, of: ofr, m: {roughness: .32}}); }
+  }
+  // армирование стен (прямоугольные) — точно по ТПР; видно в шаге «опалубка и скобы» и в разрезе:
+  //  • обычные районы — стены из бетона М150 без арматуры (ТПР 901-09-11.84, Альбом IV, АС-1, прим. 5);
+  //  • отверстия Ду ≥ 500 — 2 сетки ⌀10 A-I, у каждой грани: 2 вертикальных стержня по бокам проёма на всю высоту стены и 2 горизонтальных
+  //    над и под проёмом от стены до стены («доводить до опор»), в 50 мм от края проёма; защитный слой 20 мм в сухих, 25 — в мокрых (АС-2, прим. 1–3);
+  //  • сейсмика — рулонная сетка С 3Вр1-150/3Вр1-150 у обеих граней всех стен, защитный слой 20, нахлёст в углах 250 (Альбом VI.88, АС-12);
+  //  • вне ТПР (КЖ) без сейсмики — сетка условно, шаг 200
+  if (M.rect && M.wallE) {
+    const e = M.wallE, ax = M.A / 2, by = M.B / 2, t = M.t, V = M.V, grid = [], ring = [];
+    const B = (arr, x0, y0, z0, x1, y1, z1) => arr.push([x0, y0, z0, x1, y1, z1]);
+    if (M.armKind) {
+      const sp = M.seis ? .15 : .2, cv = M.seis ? .02 + .0015 : .025 + .005;
+      // проёмы под трубы в плоскости стены: проволоку сетки вокруг проёма (гильзы) вырезаем
+      const holes = [];
+      for (const p of M.pipes) { const xw = Math.abs(Math.cos(p.ang)) > .5;
+        for (const sg of p.through ? [1, -1] : [Math.sign(xw ? Math.cos(p.ang) : Math.sin(p.ang)) || 1]) holes.push({xw, sg, z: p.gR ? p.gz : p.z, r: (p.gR || p.ro) + .03}); }
+      const cut = (xw, sg, isV, pos, a, b) => { let segs = [[a, b]];
+        for (const h of holes) if (h.xw === xw && h.sg === sg) {
+          const d = isV ? pos : pos - h.z; if (Math.abs(d) >= h.r) continue;
+          const hw = Math.sqrt(h.r * h.r - d * d), c0 = (isV ? h.z : 0) - hw, c1 = (isV ? h.z : 0) + hw;
+          segs = segs.flatMap(([s0, s1]) => c1 <= s0 || c0 >= s1 ? [[s0, s1]] : [[s0, c0], [c1, s1]].filter(([x, y]) => y - x > .01)); }
+        return segs; };
+      const zs = []; for (let z = .1; z < V - .05; z += sp) zs.push(z);
+      for (const sg of [-1, 1]) for (const [k, d] of [[0, cv], [1, t - cv]]) {   // k: 0 — у внутренней грани, 1 — у наружной
+        const xw = sg * (ax + d), yw = sg * (by + d), lx = ax + (k ? t - cv : cv), ly = by + (k ? t - cv : cv);
+        for (let y = -ly; y <= ly + 1e-6; y += sp) for (const [a, b] of cut(true, sg, true, y, .04, V - .03)) B(grid, xw, y, a, xw, y, b);
+        for (const z of zs) for (const [a, b] of cut(true, sg, false, z, -ly, ly)) B(grid, xw, a, z, xw, b, z);
+        for (let x = -lx; x <= lx + 1e-6; x += sp) for (const [a, b] of cut(false, sg, true, x, .04, V - .03)) B(grid, x, yw, a, x, yw, b);
+        for (const z of zs) for (const [a, b] of cut(false, sg, false, z, -lx, lx)) B(grid, a, yw, z, b, yw, z);
+      }
+    }
+    const covF = (M.gzWet ? .025 : .02) + .005;   // обрамление ⌀10: защитный слой + полдиаметра
     for (const p of M.pipes) { if (p.Du < .5 - 1e-6) continue;
-      const R = (p.gR || p.ro) + .02, c = Math.cos(p.ang), sn = Math.sin(p.ang), wi = M.wallIn(p.ang);
-      for (const sx of p.through ? [1, -1] : [1]) for (const d of [cov, t - cov]) {
+      const Ro = p.gR || p.ro, off = Ro + .05 + .005, c = Math.cos(p.ang), sn = Math.sin(p.ang), wi = M.wallIn(p.ang);
+      const Lh = (Math.abs(c) > .5 ? by : ax) + t - covF;
+      for (const sx of p.through ? [1, -1] : [1]) for (const d of [covF, t - covF]) {
         const r0 = sx * (wi + d), P = (u, z) => [c * r0 - sn * u, sn * r0 + c * u, z];
-        for (const u of [-R - .3, -R - .1, R + .1, R + .3]) { const a = P(u, .04), b = P(u, V - .03); B(ring, ...a, ...b); }
-        for (const z of [p.z - R - .1, p.z - R - .4, p.z + R + .1, p.z + R + .4]) if (z > .03 && z < V - .03) { const a = P(-R - .3, z), b = P(R + .3, z); B(ring, ...a, ...b); }
+        for (const u of [-off, off]) { const a = P(u, .04), b = P(u, V - .03); B(ring, ...a, ...b); }
+        const zc = p.gR ? p.gz : p.z;
+        for (const z of [zc - off, zc + off]) if (z > .03 && z < V - .03) { const a = P(-Lh, z), b = P(Lh, z); B(ring, ...a, ...b); }
       }
     }
     const geo = (arr, d) => { const pos = [];
@@ -715,7 +814,7 @@ VV.buildScene = function (M, THREE) {
         for (const f of [[0, 1, 2, 3], [4, 7, 6, 5], [0, 4, 5, 1], [1, 5, 6, 2], [2, 6, 7, 3], [3, 7, 4, 0]]) for (const q of [0, 1, 2, 0, 2, 3]) pos.push(...v[f[q]]); }
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals(); return g; };
     const Lw = lvl.get(e.key);
-    put(geo(grid, .007), C.rebar, 'arm', {lvl: Lw, part: 'grid', m: {roughness: .7, metalness: .3, color: 0x9c7a62}});
+    if (grid.length) put(geo(grid, M.seis ? .005 : .007), C.rebar, 'arm', {lvl: Lw, part: 'grid', m: {roughness: .7, metalness: .3, color: 0x9c7a62}});
     if (ring.length) put(geo(ring, .012), C.rebar, 'arm', {lvl: Lw, part: 'ring', m: {roughness: .6, metalness: .35}});
   }
   // опалубка монолитных стен (прямоугольные): щиты снаружи и внутри, стальные ригели снаружи — видна в шагах «опалубка и скобы» и «бетон»
@@ -817,11 +916,12 @@ VV.labelAnchors = function (M, right2) {
 VV.PACK_KEYS = ['nom', 'form', 'pg', 'g1000', 'nG', 'D', 'pk', 'A', 'B', 'H', 'otst', 'Hd', 'Du', 'du', 'mesto', 'hatch', 'placeName', 'pod', 'pd6', 'Hl', 'V', 'W', 'over', 'hpp', 'pp',
   'pn', 'ring9', 'ring6', 'n9', 'n6', 'h9', 'h6', 'n106', 'n103', 'npp10', 'n76', 'n73', 'nKO', 'Dout', 'pnD', 'pnH', 't', 'sk', 'zad', 'upr', 'upV', 'gin', 'gout', 'v150', 'v50',
   'set10', 'setR', 'els', 'dims', 'seism', 'msk', 'gko', 'grunt', 'msg', 'uzel',
-  'nabH', 'nabJ', 'nabV', 'gtype', 'ugv', 'v50r', 'pOD', 'gilD', 'gilS', 'pOD2', 'gilD2', 'gilS2', 'gilL'];   // 0.9: набетонка, вода, гильзы (gtype — 1/0)
+  'nabH', 'nabJ', 'nabV', 'gtype', 'ugv', 'v50r', 'pOD', 'gilD', 'gilS', 'pOD2', 'gilD2', 'gilS2', 'gilL',   // 0.9: набетонка, вода, гильзы (gtype — 1/0/2)
+  'wet', 'zw', 'fz', 'pII', 'jrW', 'jgA', 'jgB', 'gzap', 'kzh', 'lenta', 'lentaW', 'lentaN', 'bitron', 'gpn', 'gilE', 'gilE2'];   // 0.11: гидроизоляция по грунтам, лента ГИ-Г, гильза в просадочных
 VV.pack = async function (w, angsDeg, obj) {
   const arr = VV.PACK_KEYS.map(k => { const v = w[k]; if (typeof v === 'number') return Math.round(v * 1000) / 1000; return v === undefined || v === null ? '' : v; });
   const ie = VV.PACK_KEYS.indexOf('els'); arr[ie] = String(arr[ie]).split(';').map(x => { const p = x.split('|'); return [p[0], p[2], p[3]].join('|'); }).join(';');
-  const ig = VV.PACK_KEYS.indexOf('gtype'); arr[ig] = arr[ig] === 'оклеечная' ? 1 : 0;
+  const ig = VV.PACK_KEYS.indexOf('gtype'); arr[ig] = arr[ig] === 'оклеечная' ? 1 : arr[ig] === 'нет' ? 2 : 0;
   const json = JSON.stringify({v: 1, a: angsDeg, o: obj || '', d: arr});
   return 'v1' + b64u.enc(await zip(new TextEncoder().encode(json), 'c'));
 };
@@ -830,7 +930,7 @@ VV.unpack = async function (s) {
   const j = JSON.parse(new TextDecoder().decode(await zip(b64u.dec(s.slice(2)), 'd')));
   const w = {}; VV.PACK_KEYS.forEach((k, i) => { w[k] = j.d[i]; });
   w.els = String(w.els).split(';').filter(Boolean).map(x => { const p = x.split('|'); return [p[0], '-', p[1], p[2]].join('|'); }).join(';');
-  w.gtype = w.gtype === 1 ? 'оклеечная' : w.gtype === 0 ? 'обмазочная' : w.gtype;
+  w.gtype = w.gtype === 1 ? 'оклеечная' : w.gtype === 0 ? 'обмазочная' : w.gtype === 2 ? 'нет' : w.gtype;
   return {w, angsDeg: j.a, obj: j.o};
 };
 })(typeof window !== 'undefined' ? window : globalThis);

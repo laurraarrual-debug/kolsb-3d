@@ -135,7 +135,7 @@ tr.sum td{font-weight:700;background:var(--surface-2)} tr.sum td.ok{color:var(--
 <script src="corevv.js"></script>
 <script>
 "use strict";
-const DEMO = 'k1TZExTiQxEEWvMqr4Y1XZbY975gScARGstDnZJmskNBEQgBAZCIZlL9AEI9AIOMP3jVZutodJLNcv-_9Xqt_ySxYG-SGLI4VlPYacyEK4rmd84zs39WzGT77US264rSsOAvkpiyODQnjHP_x7YILOaYC5iKA6dm4Fwud23HLgKz_5IVBnHuo0QqGug7Z_GcEFqMsBsclp3t5FCNd8sChfMRZd_31NggCDGNdcWzzwAoU1bfRPzSaiS85HmEsZfsrOPdTFHiOlTCHFSh91OQWVUEx1V6diJSVd7tJanXXJJ27qeb2pK245zPjKoV7wra74waFeFysWXRhd5i60Moyej6mE0uLu6xW3Mz63lqVvmuJVtZjfI7LYlJS15H4fbCfHfh9wPsn2f6wG0MTcafH9hBHzlzJXQY8M4SPvBHJ4KAjqfIZXZx18cmboXPbj3nxb9fHpPw';
+const DEMO = 'k1TZFBblQxDIavMvL6r2Unz3nJzAl6hqoLJPbs2BCkalbAAoS6K6ID5QKPxajViPYMzo1QXvumo0iR_Tvx_yX-QO9praA3tL4QaJZL0Dtak-_alT_4P9-3q5U_-d_2xfd-aFufCPSW1hekBAH5jf_2P2dKGFgilA1RZK5cE8jv-nbtk9_7kz8ShDVAWAwC4QHS72VEjhDOEdblNPZzBvKd_1SjZxs1Lq9hIkQoSH3nO7Wz0HG0a3P_1NsYQuI8QjllhMU7FwhbwUxJi0nVWkw2i1GNVUWOeapaU5LN0a3nWTb-y_ftU_vetn7waeX3PrXP_tC2_uhT-1a1qnGcu4wcexrnnrepxtrtfrSvflj5XS9peqWpQUSqhhMita6kLDWXU7CjbOUUcFxkfXlWB-hiHqSGsmBYflZGIRRkkN_6DYHOzwkauChUOQ5QY4sYOId5bmEetbys0GOOGdq_GYI4j9cglx__Aw';
 const $ = s => document.querySelector(s);
 const {fmt, sgn, esc, N, S} = KC;
 let coatLbl = [], ugvLbl = null, elKeys = new Set(), stepExp = false, inside = null, showCoat = false, M, SC, renderer, camera, controls, steps, stepIdx = -1, cut = false, expT = 0, expTarget = 0, showLbl = true, lblEls = [], needs = true;
@@ -181,7 +181,7 @@ function initGL() {
   else lblEls = M.els.map(e => { const d = document.createElement('div'); d.className = 'lbl'; const h = e.kind === 'ЛЮК' ? Math.round(M.Hl * 1000) : (M.dims[e.mark] ? M.dims[e.mark].h : Math.round((e.z1 - e.z0) * 1000));
     d.innerHTML = e.kind === 'РШ' ? `${esc(e.mark)}<small>рамка 620×620, ${KC.fmt(M.cat[e.mark] ? M.cat[e.mark].kg : KC.GRATE.kg, 1)} кг</small>` : `${esc(e.mark)}${e.q > 1 ? ' ×' + e.q : ''}<small>h ${h}${e.q > 1 ? ' ×' + e.q : ''} мм</small>`; lab.appendChild(d); return {e, d}; });
   // выноски гидроизоляции — слева от колодца
-  coatLbl = [['tape', 'ЛЕНТА', 'гидроизол, 2 слоя'], ['coat', M.okl ? 'ОКЛЕЕЧНАЯ' : 'БИТУМ', M.okl ? 'гидроизол 2–3 слоя' : 'горячий, 5 мм']].map(([k, t, sm]) => { const d = document.createElement('div'); d.className = 'lbl l' + (k === 'tape' ? ' tp' : ''); d.innerHTML = `${t}<small>${sm}</small>`; lab.appendChild(d); return {k, d}; });
+  coatLbl = [['tape', 'ЛЕНТА', 'гидроизол, 2 слоя'], ['coat', M.okl ? 'ОКЛЕЕЧНАЯ' : 'БИТУМ', M.okl ? 'гидроизол 2–3 слоя' : M.gzOld || !M.gzOut ? 'горячий, 5 мм' : M.gzWet ? 'до зоны воды' : 'зона промерзания']].map(([k, t, sm]) => { const d = document.createElement('div'); d.className = 'lbl l' + (k === 'tape' ? ' tp' : ''); d.innerHTML = `${t}<small>${sm}</small>`; lab.appendChild(d); return {k, d}; });
   // подпись уровня грунтовых вод — у края водной глади
   ugvLbl = M.wetV ? (() => { const d = document.createElement('div'); d.className = 'lbl ugv'; d.innerHTML = `УГВ<small>−${KC.fmt(M.ugv)} м от земли</small>`; lab.appendChild(d); return d; })() : null;
   addEventListener('resize', () => { needs = true; });
@@ -262,10 +262,12 @@ function loop(now) {
     d.classList.toggle('hi', !!(st && st.els.includes(e.key)));
   });
   { const coatOn = showLbl && !inside && !cut && expT < .02 && ((showCoat && !done) || (done && done.has('coatfin')));
-    const tr = M.tapes.filter(t => t.part === 'r'), tp = tr[Math.min(3, tr.length - 1)] || M.tapes[0], rg = M.rings[Math.min(1, M.rings.length - 1)] || M.rings[0], R = M.Rout + .012;
+    const tr = M.tapes.filter(t => t.part === 'r'), tp = tr[Math.min(3, tr.length - 1)] || M.tapes[0], R = M.Rout + .012;
+    // 0.11: «битум» — на середине первого покрытого участка (кольца/стены, потом горловина), «лента» — только если она есть
+    let cz = null; for (const e of M.els) if (['КС', 'СТ', 'КГ', 'КО', 'К10', 'НБ'].includes(e.kind)) { const sp = KC.coatSpans(M, e.z0, e.z1)[0]; if (sp) { cz = (sp[0] + sp[1]) / 2; break; } }
     let yPrev = -1e9;
-    for (const {k, d} of coatLbl) { if (!coatOn || !tp) { d.style.display = 'none'; continue; }
-      const z = k === 'tape' ? tp.z : (rg ? (rg.z0 + rg.z1) / 2 : M.V / 2), p = new THREE.Vector3(-right.x / rl * R, -right.y / rl * R, z).project(camera);
+    for (const {k, d} of coatLbl) { if (!coatOn || (k === 'tape' ? !tp : cz === null)) { d.style.display = 'none'; continue; }
+      const z = k === 'tape' ? tp.z : cz, p = new THREE.Vector3(-right.x / rl * R, -right.y / rl * R, z).project(camera);
       const y = Math.max((1 - p.y) / 2 * H, yPrev + 38); yPrev = y;
       d.style.display = ''; d.style.left = Math.max(84, (p.x + 1) / 2 * W) + 'px'; d.style.top = y + 'px'; } }
   if (ugvLbl) { const on = showLbl && SC.meshes.some(m => m.userData.key === 'ugv' && m.visible);
@@ -340,6 +342,8 @@ function frame() {
   $('#bExp').onclick = () => { out(); expTarget = expTarget > 0 ? 0 : 1; applyState(); };
   $('#bLbl').onclick = () => { showLbl = !showLbl; applyState(); };
   $('#bCoat').onclick = () => { out(); showCoat = !showCoat; applyState(); };
+  $('#bCoat').hidden = !M.gzAny;   // 0.11: гидроизоляции нет (сухой грунт) — кнопку не показываем
+  $('#bCoat').title = M.gzAny ? 'Гидроизоляция по грунтовым условиям' : '';
   $('#bIn').onclick = () => setInside(!inside);
   $('#inUp').onclick = () => inMove(.3);
   $('#inDn').onclick = () => inMove(-.3);
@@ -725,7 +729,9 @@ function buildPanelVV(w) {
       <tr><td>Раскладка</td><td class="r">по плану Альбома IV (АС-8…12)</td></tr>${M.lay.type === 'S' ? `<tr><td>Ширины плит / длина камеры</td><td class="r">${mm(M.lay.sum)} / ${N(w, 'A')} мм</td></tr>` : ''}</tbody></table></div>` : ''}
     <div><h2>Основание и гидроизоляция</h2><table><tbody>
       <tr><td>Основание (${esc(M.gruntName.split(' — ')[0])})</td><td class="r">${M.base.map(b => esc(b.n)).join('<br>')}${M.zamok ? '<br>водоупорный замок' : ''}</td></tr>
-      <tr><td>Снаружи</td><td class="r">${M.okl ? `оклеечная: гидроизол 2–3 слоя на мастике, до ${sgn(M.zOkl - M.zg)} м` : 'горячий битум'}, ${fmt(N(w, 'gout'))} м²</td></tr><tr><td>Внутри</td><td class="r">${fmt(N(w, 'gin'))} м²</td></tr>
+      <tr><td>Снаружи</td><td class="r">${M.okl ? `оклеечная: гидроизол 2–3 слоя на мастике, до ${sgn(M.zOkl - M.zg)} м, ${fmt(N(w, 'gout'))} м²` : M.gzOld ? `горячий битум, ${fmt(N(w, 'gout'))} м²` : M.gzOut ? `горячий битум ${KC.gzWhy(M).zone}, ${fmt(N(w, 'gout'))} м²` : 'не нужна — грунт сухой'}</td></tr>
+      <tr><td>Внутри</td><td class="r">${N(w, 'gin') ? (M.pII && !M.okl ? `горячий битум (просадочные II), ${fmt(N(w, 'gin'))} м²` : `${M.gzOld ? '' : 'Битрон-11, '}${fmt(N(w, 'gin'))} м²`) : 'не нужна'}</td></tr>
+      ${M.tapes.length ? `<tr><td>Лента на стыки</td><td class="r">гидроизол ГИ-Г${M.tapeN > 1 ? ' в ' + M.tapeN + ' слоя' : ''} · ${M.tapes.length} стыков в зоне воды · ${fmt(N(w, 'lenta'))} м²</td></tr>` : ''}
       ${M.ugv !== null ? `<tr><td>Грунтовые воды</td><td class="r">УГВ ${fmt(M.ugv)} м от земли${M.wetV ? '' : ' — ниже колодца'}</td></tr>` : ''}${M.beton ? `<tr><td>Бетон</td><td class="r">${esc(M.beton)}</td></tr>` : ''}
       ${M.gil ? `<tr><td>Гильзы (стальной футляр)</td><td class="r">${[...new Set(M.pipes.filter(p => p.sl).map(p => `Ø${p.gD}×${p.gSmm}`))].join(', ')} · L ${mm(M.gilL)} · ${M.gil} шт.</td></tr>` : ''}
       ${M.hatches.some(g => g.nab) ? `<tr><td>Набетонка горловины</td><td class="r">М100 · h ${mm(M.nabH)}${nG > 1 ? ' ×' + nG : ''} · ${fmt(M.nabV, 3)} м³</td></tr>` : ''}</tbody></table>
@@ -758,9 +764,10 @@ function buildPanel(w, obj) {
       <tr><td>Шов с плитой днища</td><td class="r">обойма — бетон лотка</td></tr></tbody></table></div>` : ''}
     <div><h2>Основание и гидроизоляция</h2><table><tbody>
       <tr><td>Основание (грунт ${M.grunt})</td><td class="r">${M.base.map(b => esc(b.n)).join('<br>')}${M.zamok ? '<br>водоупорный замок 600×400' : ''}</td></tr>
-      <tr><td>Снаружи</td><td class="r">${M.okl ? `оклеечная: гидроизол 2–3 слоя на мастике, до ${sgn(M.zOkl - M.zg)} м` : 'битумная мастика'}</td></tr>
+      <tr><td>Снаружи</td><td class="r">${M.okl ? `оклеечная: гидроизол 2–3 слоя на мастике, до ${sgn(M.zOkl - M.zg)} м` : M.gzOld ? 'битумная мастика' : M.gzOut ? `горячий битум ${KC.gzWhy(M).zone}` : 'не нужна — грунт сухой'}</td></tr>
+      ${!M.gzOld && N(w, 'gin') ? `<tr><td>Внутри</td><td class="r">${M.pII && !M.okl ? 'горячий битум (просадочные II)' : 'Битрон-11'}, ${fmt(N(w, 'gin'))} м²</td></tr>` : ''}
       ${M.ugv !== null ? `<tr><td>Грунтовые воды</td><td class="r">УГВ ${fmt(M.ugv)} м от земли${M.wetV ? '' : ' — ниже колодца'}</td></tr>` : ''}${M.beton ? `<tr><td>Бетон</td><td class="r">${esc(M.beton)}</td></tr>` : ''}
-      <tr><td>Лента на стыки</td><td class="r">гидроизол ГИ-Г${M.tapeN > 1 ? ' в ' + M.tapeN + ' слоя' : ''} · ${M.tapes.length} стыков · полоса ${fmt(M.tapeW)} м · ${fmt(N(w, 'lenta'))} м²</td></tr></tbody></table>
+      ${M.tapes.length ? `<tr><td>Лента на стыки</td><td class="r">гидроизол ГИ-Г${M.tapeN > 1 ? ' в ' + M.tapeN + ' слоя' : ''} · ${M.tapes.length} стыков${M.gzOld || M.okl ? '' : ' в зоне воды'} · полоса ${fmt(M.tapeW)} м · ${fmt(N(w, 'lenta'))} м²</td></tr>` : '<tr><td>Лента на стыки</td><td class="r">не нужна — стыки выше зоны воды</td></tr>'}</tbody></table>
       <div class="note">Основание — по ТПР 902-09-22.84, Альбом II, лист АС-1.</div></div>
     <div class="msg ${S(w, 'msg') === 'ОК' ? '' : 'bad'}">Проверка расчёта: ${esc(S(w, 'msg'))}</div>
     <div class="note">Модель построена по данным таблицы «Авто Колодцы», переданным в ссылке. Демонстрационная версия KOLSB.</div>`;
