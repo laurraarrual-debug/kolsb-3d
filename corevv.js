@@ -499,7 +499,7 @@ function gorlStep(M, e, out, base, kgs, H, nG = 1) {
   const sms = M.seams.filter(s => s.above === e || (s.kind === 'gorl' && s.below === e)), nsk = VV.skCount(M, e.key);
   if (e.kind === 'РШ') out.push({...base, gk, t: `Защитная решётка${xN}`, fc: `своя разработка · ${fmt(M.cat[e.mark] ? M.cat[e.mark].kg : KC.GRATE.kg, 1)} кг`,
     todo: ['В плите — 4 отв. Ø20, глубина 100.', 'Рамку 620×620 — анкерами Ø12 на клей.', 'Решётку на рамку; петли — на сварку.'],
-    chk: 'Рамка — в шве под горловиной; решётка откидывается на петлях.'});
+    chk: 'Рамка — в шве под горловиной; решётка на петлях.'});
   else if (e.kind === 'РВ') {
     const hs = M.hatches.filter(g => g.lev), dh = mm(e.z1 - e.z0);
     out.push({...base, gk: 'РВ', t: `Выравнивающий слой под горловину${hs.length > 1 ? 'ми' : ''}`, fc: `раствор М100 · ${dh} мм · люк${hs.length > 1 ? 'и' : ''} ${hs.map(g => g.i + 1).join(', ')}`,
