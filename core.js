@@ -31,6 +31,14 @@ KC.OTM_S = Math.PI * KC.OTM_B * (0.84 + KC.OTM_B);   // её площадь на
 // под первым элементом горловины, 4 анкера ⌀12 L=100 в плите перекрытия (отв. ⌀20 на эпоксидном клее); решётка — кольцо ⌀12
 // (развёртка 1730 мм) и 10 прутков ⌀12 через 50 мм, на двух петлях ⌀6 со стороны центра колодца; 15,3 кг
 KC.GRATE = {a: .31, w: .05, t: .01, anc: .285, ancL: .10, R: .2753, r: .006, bars: [-.225, -.175, -.125, -.075, -.025, .025, .075, .125, .175, .225], kg: 15.3};
+// решётка: кольцо, прутья, петли (в осях лаза; петли — на стороне −x); open — то же, откинутое на 75° вокруг оси петель
+KC.gratePieces = function (THREE, G, zr) {
+  const closed = [new THREE.TorusGeometry(G.R, G.r, 8, 72).translate(0, 0, zr)];
+  for (const x of G.bars) { const h = Math.sqrt(Math.max(0, (G.R - G.r) ** 2 - x * x)) * 2; closed.push(new THREE.CylinderGeometry(G.r, G.r, h, 8).translate(x, 0, zr)); }
+  for (const y of [-.07, .07]) closed.push(new THREE.TorusGeometry(.018, .003, 6, 16, Math.PI).rotateX(Math.PI / 2).translate(-G.R + .005, y, zr));
+  const hx = -G.R + .005, a = 75 * Math.PI / 180;
+  return {closed, open: closed.map(g => g.clone().translate(-hx, 0, -zr).rotateY(-a).translate(hx, 0, zr))};
+};
 KC.SHELF_I = 0.02;         // уклон полок к лотку
 KC.hex = n => '#' + n.toString(16).padStart(6, '0');
 KC.TAPE_TEXT = 'ГИДРОИЗОЛЯЦИОННАЯ ЛЕНТА';   // надпись на ленте в 3D
@@ -78,6 +86,8 @@ KC.model = function (w, angs) {
   if (nko > 0) { M.koE = addE({kind: 'КО', mark: 'КО6', q: nko, z0: z, z1: z + nko * .08 - KC.SEAM, rin: .29, rout: .42, cx: M.gx, cy: M.gy}); z += nko * .08; }
   if (M.pd6) M.pdE = addE({kind: 'ПД', mark: 'ПД6', z0: z, z1: z + .22, rin: .29, rout: 1.25, cx: M.gx, cy: M.gy});
   M.hatchE = addE({kind: 'ЛЮК', mark: 'Люк ' + S(w, 'hatch'), z0: M.ztop - M.Hl, z1: M.ztop, rin: .31, rout: M.hat[0], cx: M.gx, cy: M.gy});
+  // постель из раствора под корпусом люка (в «Авто Колодцах» на люк — свой шов сверх шва над КО6: обычно 20 мм)
+  if (!M.pd6 && M.hatchE.z0 - (z - KC.SEAM) > .005) M.hatchE.bed = [z - KC.SEAM, M.hatchE.z0];
   M.els = els;
   // стенка-растекатель (перепадные): снизу вверх
   M.wall = [];
@@ -482,7 +492,8 @@ KC.unpack = async function (s) {
 KC.COL = {ring: 0xc9c5bb, ring2: 0xbfbbb0, plate: 0xaaa69c, gorl: 0xd5cfc2, ko: 0xe0dacc, lot: 0xbdb8ad, chan: 0x7f95a4, pipe: 0xd0712f, pipeIn: 0x9c4f1d,
   iron: 0x34383d, lid: 0x4e555c, step: 0xd9a21b, wall: 0x8d77bd, steel: 0x4a5560, ms: 0x2f6f9f, hi: 0xf2a516, coat: 0x50555b, tape: 0x16181b, cap: 0xe9e4d8,
   grass: 0x76a650, soil: 0x9a7b5a, lean: 0xb0aca2, mortar: 0xc9c1b0, clay: 0x8f6a4a, comp: 0xa48a6c, asph: 0x3f4348, gravel: 0x9d978c, tile: 0xb8b1a5, sand: 0xd9c9a3, edge: 0x4a4a4a,
-  form: 0xc58c55, waler: 0xe2ad1c, fresh: 0x8c8c86, nab: 0xb4ab98, ugv: 0x3d8fd6, sleeve: 0x6f7a84, seal: 0x2b2b2b};
+  form: 0xc58c55, waler: 0xe2ad1c, fresh: 0x8c8c86, nab: 0xb4ab98, ugv: 0x3d8fd6, sleeve: 0x6f7a84, seal: 0x2b2b2b,
+  pe: 0x1f2226, peIn: 0x0d0e10, corrIn: 0xe9e4d9, rebar: 0x8a4b2d, beam: 0xa88a70, mono: 0xb9b3a7};   // 0.10: ПЭ (В1), внутренний слой гофры (К1), арматура
 KC.buildScene = function (M, THREE) {
   const C = KC.COL, scene = new THREE.Scene(), meshes = [], mats = new Map(), xmats = [];
   const mat = (col, o = {}) => { const key = col + JSON.stringify(o); if (!mats.has(key)) mats.set(key, new THREE.MeshStandardMaterial(Object.assign({color: col, roughness: .88, metalness: 0, side: THREE.DoubleSide}, o))); return mats.get(key); };
@@ -524,10 +535,10 @@ KC.buildScene = function (M, THREE) {
         put(new THREE.BoxGeometry(lx, ly, G.t).translate(x, y, G.t / 2), C.steel, e.key, {...o, part: 'frame'});
       for (const [x, y] of [[G.anc, G.anc], [G.anc, -G.anc], [-G.anc, G.anc], [-G.anc, -G.anc]])
         put(new THREE.CylinderGeometry(G.r, G.r, G.ancL, 10).rotateX(Math.PI / 2).translate(x, y, G.t - G.ancL / 2), C.steel, e.key, {...o, part: 'frame'});
-      put(new THREE.TorusGeometry(G.R, G.r, 8, 72).translate(0, 0, zr), C.steel, e.key, {...o, part: 'grate'});
-      for (const x of G.bars) { const h = Math.sqrt(Math.max(0, (G.R - G.r) ** 2 - x * x)) * 2;
-        put(new THREE.CylinderGeometry(G.r, G.r, h, 8).translate(x, 0, zr), C.steel, e.key, {...o, part: 'grate'}); }
-      for (const y of [-.07, .07]) put(new THREE.TorusGeometry(.018, .003, 6, 16, Math.PI).rotateX(Math.PI / 2).translate(-G.R + .005, y, zr), C.steel, e.key, {...o, part: 'grate'});
+      // решётка и её копия «откинута на петлях» (ключ grOpen — видна только в виде изнутри): поворот 75° вокруг оси петель
+      const gp = KC.gratePieces(THREE, G, zr);
+      for (const g of gp.closed) put(g, C.steel, e.key, {...o, part: 'grate'});
+      for (const g of gp.open) put(g, C.steel, 'grOpen', {...o, part: 'grateOpen', of: e.key});
     } else if (e.kind === 'ПД') {
       for (const [r, z0, h] of [[.29, e.z0, .11], [.47, e.z0 + .11, .11]]) {
         const sh = new THREE.Shape(); sh.moveTo(-1.25, -.875); sh.lineTo(1.25, -.875); sh.lineTo(1.25, .875); sh.lineTo(-1.25, .875); sh.lineTo(-1.25, -.875);
@@ -540,21 +551,22 @@ KC.buildScene = function (M, THREE) {
       else put(ringGeo(e.rin, e.rout, e.z1 - e.z0), C.iron, e.key, {pos: [e.cx, e.cy, e.z0], lvl: L, m: {roughness: .6, metalness: .3}});
       put(new THREE.CylinderGeometry(.305, .305, .03, 64).rotateX(Math.PI / 2), C.lid, e.key, {pos: [e.cx, e.cy, e.z1 - .02], lvl: L, part: 'lid', m: {roughness: .55, metalness: .35}});
       for (let r = .08; r < .3; r += .07) put(new THREE.TorusGeometry(r, .006, 6, 64), C.iron, e.key, {pos: [e.cx, e.cy, e.z1 - .004], lvl: L, part: 'lid'});
+      if (e.bed) put(ringGeo(.29, .42, e.bed[1] - e.bed[0]), C.mortar, e.key, {pos: [e.cx, e.cy, e.bed[0]], lvl: L, part: 'bed', m: {roughness: .95}});
     }
   }
   const L0 = order.get(M.rings[0] ? M.rings[0].key : M.els[0].key);
   // трубы
+  // трубы — гофрированные ПП (оранжевый гофр, светлый гладкий внутренний слой), полые; торец — у лотка внутри кольца.
+  // Ввод — проём в кольце без гильзы: зазор — смоляная прядь (жгут) и цементный раствор, снаружи видна полоса раствора заподлицо с кольцом
   M.pipes.forEach(p => {
-    const ro = M.Du * .54, ri2 = M.Du / 2, len = M.Rout + .9 - (M.Rin - .04);
-    const g = new THREE.CylinderGeometry(ro, ro, len, 40, 1, true).rotateZ(Math.PI / 2).translate(M.Rin - .04 + len / 2, 0, 0);
-    const gi = new THREE.CylinderGeometry(ri2, ri2, len, 40, 1, true).rotateZ(Math.PI / 2).translate(M.Rin - .04 + len / 2, 0, 0);
-    const ringEnd = new THREE.RingGeometry(ri2, ro, 40).rotateY(Math.PI / 2).translate(M.Rin - .04, 0, 0);
-    const ringEnd2 = new THREE.RingGeometry(ri2, ro, 40).rotateY(Math.PI / 2).translate(M.Rout + .9, 0, 0);
-    const L = lvlAt(p.z);
-    const pk = p.drop ? 'pipeD' : 'pipe';   // перепадный вход ставится позже — свой ключ
-    for (const [geo, col] of [[g, C.pipe], [gi, C.pipeIn], [ringEnd, C.pipe], [ringEnd2, C.pipe]]) put(geo, col, pk, {pos: [0, 0, p.z + ri2], rotz: p.ang, lvl: L});
-    // заделка снаружи кольца — бетонный воротник
-    put(new THREE.CylinderGeometry(ro + .05, ro + .05, .08, 40, 1, true).rotateZ(Math.PI / 2).translate(M.Rout + .04, 0, 0), C.ring2, pk, {pos: [0, 0, p.z + ri2], rotz: p.ang, lvl: L});
+    const ro = M.Du * .56, rv = M.Du * .525, ri2 = M.Du / 2, x0 = M.Rin - .04, x1 = M.Rout + .9, len = x1 - x0;
+    const L = lvlAt(p.z), pk = p.drop ? 'pipeD' : 'pipe', o = {pos: [0, 0, p.z + ri2], rotz: p.ang, lvl: L};   // перепадный вход ставится позже — свой ключ
+    put(KC._.corrGeo(THREE, rv, ro, x0, x1, Math.max(.025, .16 * M.Du)), C.pipe, pk, {...o, m: {roughness: .5}});
+    put(new THREE.CylinderGeometry(ri2, ri2, len, 40, 1, true).rotateZ(Math.PI / 2).translate(x0 + len / 2, 0, 0), C.corrIn, pk, {...o, m: {roughness: .7}});
+    for (const x of [x0, x1]) put(new THREE.RingGeometry(ri2, rv, 40).rotateY(Math.PI / 2).translate(x, 0, 0), C.pipe, pk, {...o, m: {roughness: .5}});
+    const rz = ro + .025, xa = Math.sqrt(Math.max(0, M.Rout ** 2 - rz * rz)) - .004, xb = M.Rout + .006;
+    put(new THREE.CylinderGeometry(rz, rz, xb - xa, 40, 1, true).rotateZ(Math.PI / 2).translate((xa + xb) / 2, 0, 0), C.mortar, pk, {...o, part: 'seal'});
+    put(new THREE.RingGeometry(ro - .003, rz, 40).rotateY(Math.PI / 2).translate(xb, 0, 0), C.mortar, pk, {...o, part: 'seal'});
   });
   // лоток: полки (заполнение marching squares) + каналы (развёртка профиля вдоль кривой)
   {
@@ -657,6 +669,7 @@ KC.buildScene = function (M, THREE) {
     else if (e.kind === 'КГ') shell(e.cx, e.cy, .423, e.z0, e.z1, 'coat', C.coat, L, 64);
     else if (e.kind === 'КО') for (let i = 0; i < e.q; i++) shell(e.cx, e.cy, .423, e.z0 + i * .08, e.z0 + i * .08 + .07, 'coat', C.coat, L, 64);
     else if (e.kind === 'НБ') shell(e.cx, e.cy, .423, e.z0, e.z1, 'coat', C.coat, L, 64);
+    else if (e.kind === 'ЛЮК' && e.bed) shell(e.cx, e.cy, .423, e.bed[0], e.bed[1], 'coat', C.coat, L, 64);   // постель под люком — снаружи тоже под битумом
   }
   // ленты: перекрывающиеся полосы (на горловине швы КО6 через 80 мм) показываем одной полосой
   const gTop = M.koE ? M.koE.z1 : M.gorl.length ? M.gorl[M.gorl.length - 1].z1 : 1e9, tb = [];
@@ -735,6 +748,30 @@ function buildSurface(M, THREE, put, shapeGeo, C, L) {
     put(new THREE.LatheGeometry(pa.concat([pa[0]]), 96).rotateX(Math.PI / 2), C.asph, 'surf', {pos: [cx, cy, 0], lvl: L, m: {roughness: .95}});
   }
 }
+// труба ПЭ (В1): чёрная с синими полосами вдоль трубы (u — по окружности цилиндра)
+function peTexture(THREE) {
+  if (peTexture.t || typeof document === 'undefined') return peTexture.t || null;
+  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 4; const g = cv.getContext('2d');
+  g.fillStyle = '#1f2226'; g.fillRect(0, 0, 512, 4); g.fillStyle = '#2a7bd4';
+  for (const u of [.04, .29, .54, .79]) g.fillRect(Math.round(u * 512), 0, 11, 4);
+  const t = new THREE.CanvasTexture(cv); t.wrapS = THREE.RepeatWrapping; t.anisotropy = 4; peTexture.t = t; return t;
+}
+// монолитный бетон (стены В1): отпечатки щитов опалубки 1,2×0,6 м и отверстия от стяжек; UV у ExtrudeGeometry — в метрах
+function monoTexture(THREE) {
+  if (monoTexture.t || typeof document === 'undefined') return monoTexture.t || null;
+  const cv = document.createElement('canvas'); cv.width = 384; cv.height = 192; const g = cv.getContext('2d');
+  g.fillStyle = '#bdb7ab'; g.fillRect(0, 0, 384, 192);
+  for (let i = 0; i < 900; i++) { const v = 170 + Math.floor(Math.random() * 30); g.fillStyle = `rgba(${v},${v - 4},${v - 12},.35)`; g.fillRect(Math.random() * 384, Math.random() * 192, 2, 2); }
+  g.strokeStyle = 'rgba(95,90,80,.55)'; g.lineWidth = 2; g.strokeRect(1, 1, 382, 190);
+  g.fillStyle = 'rgba(60,58,54,.75)'; for (const [x, y] of [[96, 96], [288, 96]]) { g.beginPath(); g.arc(x, y, 5, 0, Math.PI * 2); g.fill(); }
+  const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1 / 1.2, 1 / .6); t.anisotropy = 4; monoTexture.t = t; return t;
+}
+// гофрированная труба ПП (К1) вдоль оси x от x0 до x1: наружный гофр между rv (впадина) и ro (гребень)
+function corrGeo(THREE, rv, ro, x0, x1, pitch) {
+  const n = Math.max(2, Math.round((x1 - x0) / pitch)), p = (x1 - x0) / n, V = (r, y) => new THREE.Vector2(r, y), pts = [V(rv, x0)];
+  for (let i = 0; i < n; i++) { const y = x0 + i * p; pts.push(V(rv, y + .12 * p), V(ro, y + .32 * p), V(ro, y + .68 * p), V(rv, y + .88 * p), V(rv, y + p)); }
+  return new THREE.LatheGeometry(pts, 40).rotateZ(-Math.PI / 2);
+}
 function tileTexture(THREE) {
   if (tileTexture.t) return tileTexture.t;
   const cv = document.createElement('canvas'); cv.width = cv.height = 256; const g = cv.getContext('2d');
@@ -781,5 +818,5 @@ KC.labelAnchors = function (M, right2) {
   return out;
 };
 // внутренние помощники — для модели водопроводных колодцев (corevv.js)
-KC._ = {lineCircle, lineBox, minus, tileTexture, b64u, zip, dir};
+KC._ = {lineCircle, lineBox, minus, tileTexture, peTexture, monoTexture, corrGeo, b64u, zip, dir};
 })(typeof window !== 'undefined' ? window : globalThis);

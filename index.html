@@ -226,9 +226,10 @@ function applyState() {
     if (k === 'form') v = v && !!cur && cur.has('form');   // опалубка: стоит в шаге «опалубка и скобы»; бетонирование и распалубка — в анимации
     if (k === 'ugv') v = (!st || st.fin) && expTarget === 0 && !inside;   // уровень грунтовых вод — в обзоре
     if (k === 'surf' && showCoat && !done) v = false;   // гидроизоляция: покрытие у люка убираем, чтобы была видна горловина
+    if (k === 'grOpen') v = !!inside && (!done || done.has(ud.of));   // откинутая на петлях решётка — только в виде изнутри
     if (inside && (ud.part === 'lid' || ud.part === 'grate' || k === 'coat' || k === 'tape')) v = false;   // изнутри: крышка люка открыта, решётка откинута — сверху небо
     m.visible = !!v;
-    if (m.isMesh && !ud.line) m.material = (st && !st.nohi && (cur.has(k) || (k === 'coat' && ud.of && cur.has(ud.of)))) ? SC.hiMat : ud.base;
+    if (m.isMesh && !ud.line) m.material = (st && !st.nohi && !/^ms\d/.test(k) && (cur.has(k) || (k === 'coat' && ud.of && cur.has(ud.of)))) ? SC.hiMat : ud.base;   // МС — своим цветом, иначе сливаются с выделенным кольцом
   }
   $('#bCut').setAttribute('aria-pressed', cut); $('#bExp').setAttribute('aria-pressed', expTarget > 0); $('#bLbl').setAttribute('aria-pressed', showLbl); $('#bSteps').setAttribute('aria-pressed', stepIdx >= 0); $('#bCoat').setAttribute('aria-pressed', showCoat); $('#bIn').setAttribute('aria-pressed', !!inside); $('#inui').hidden = !inside; if (inside) $('#inHint').textContent = inHint();
   const card = $('#card'); card.hidden = !st;
