@@ -51,6 +51,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:14px/1
 .lbl::before{content:"";position:absolute;left:-8px;top:50%;width:8px;border-top:1px solid var(--muted)}
 .lbl.l{transform:translate(calc(-100% - 8px),-50%)}.lbl.l::before{left:auto;right:-8px}
 .lbl.tp{color:#1f6fc5;border-color:#1f6fc5}
+.lbl.ugv{color:#1f6fb5;border-color:#7fb3e0}
 .panel{background:var(--surface);border-left:1px solid var(--line);overflow:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
 .panel h2{font:700 15px var(--f);margin:0}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
@@ -65,6 +66,7 @@ td.r,th.r{text-align:right}
 tr.sum td{font-weight:700;background:var(--surface-2)} tr.sum td.ok{color:var(--ok)}
 .note{font-size:12px;color:var(--muted)}
 .msg{font-size:13px;border-radius:8px;padding:8px 10px;background:var(--surface-2)}
+.chip.ugv{color:#1f6fb5;border-color:#9cc7ec}
 .msg.bad{color:var(--warn)}
 .sheetbtn{display:none}
 .sheethead{display:none}
@@ -136,7 +138,7 @@ tr.sum td{font-weight:700;background:var(--surface-2)} tr.sum td.ok{color:var(--
 const DEMO = 'k1TZExTiQxEEWvMqr4Y1XZbY975gScARGstDnZJmskNBEQgBAZCIZlL9AEI9AIOMP3jVZutodJLNcv-_9Xqt_ySxYG-SGLI4VlPYacyEK4rmd84zs39WzGT77US264rSsOAvkpiyODQnjHP_x7YILOaYC5iKA6dm4Fwud23HLgKz_5IVBnHuo0QqGug7Z_GcEFqMsBsclp3t5FCNd8sChfMRZd_31NggCDGNdcWzzwAoU1bfRPzSaiS85HmEsZfsrOPdTFHiOlTCHFSh91OQWVUEx1V6diJSVd7tJanXXJJ27qeb2pK245zPjKoV7wra74waFeFysWXRhd5i60Moyej6mE0uLu6xW3Mz63lqVvmuJVtZjfI7LYlJS15H4fbCfHfh9wPsn2f6wG0MTcafH9hBHzlzJXQY8M4SPvBHJ4KAjqfIZXZx18cmboXPbj3nxb9fHpPw';
 const $ = s => document.querySelector(s);
 const {fmt, sgn, esc, N, S} = KC;
-let coatLbl = [], elKeys = new Set(), stepExp = false, inside = null, showCoat = false, M, SC, renderer, camera, controls, steps, stepIdx = -1, cut = false, expT = 0, expTarget = 0, showLbl = true, lblEls = [], needs = true;
+let coatLbl = [], ugvLbl = null, elKeys = new Set(), stepExp = false, inside = null, showCoat = false, M, SC, renderer, camera, controls, steps, stepIdx = -1, cut = false, expT = 0, expTarget = 0, showLbl = true, lblEls = [], needs = true;
 
 function theme() { try { const t = localStorage.getItem('kolsb-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {} }
 theme();
@@ -179,7 +181,9 @@ function initGL() {
   else lblEls = M.els.map(e => { const d = document.createElement('div'); d.className = 'lbl'; const h = e.kind === 'ЛЮК' ? Math.round(M.Hl * 1000) : (M.dims[e.mark] ? M.dims[e.mark].h : Math.round((e.z1 - e.z0) * 1000));
     d.innerHTML = e.kind === 'РШ' ? `${esc(e.mark)}<small>рамка 620×620, ${KC.fmt(M.cat[e.mark] ? M.cat[e.mark].kg : KC.GRATE.kg, 1)} кг</small>` : `${esc(e.mark)}${e.q > 1 ? ' ×' + e.q : ''}<small>h ${h}${e.q > 1 ? ' ×' + e.q : ''} мм</small>`; lab.appendChild(d); return {e, d}; });
   // выноски гидроизоляции — слева от колодца
-  coatLbl = [['tape', 'ЛЕНТА', 'гидроизол, 2 слоя'], ['coat', 'БИТУМ', 'горячий, 5 мм']].map(([k, t, sm]) => { const d = document.createElement('div'); d.className = 'lbl l' + (k === 'tape' ? ' tp' : ''); d.innerHTML = `${t}<small>${sm}</small>`; lab.appendChild(d); return {k, d}; });
+  coatLbl = [['tape', 'ЛЕНТА', 'гидроизол, 2 слоя'], ['coat', M.okl ? 'ОКЛЕЕЧНАЯ' : 'БИТУМ', M.okl ? 'гидроизол 2–3 слоя' : 'горячий, 5 мм']].map(([k, t, sm]) => { const d = document.createElement('div'); d.className = 'lbl l' + (k === 'tape' ? ' tp' : ''); d.innerHTML = `${t}<small>${sm}</small>`; lab.appendChild(d); return {k, d}; });
+  // подпись уровня грунтовых вод — у края водной глади
+  ugvLbl = M.wetV ? (() => { const d = document.createElement('div'); d.className = 'lbl ugv'; d.innerHTML = `УГВ<small>−${KC.fmt(M.ugv)} м от земли</small>`; lab.appendChild(d); return d; })() : null;
   addEventListener('resize', () => { needs = true; });
   requestAnimationFrame(loop);
 }
@@ -220,6 +224,7 @@ function applyState() {
     else if ((k === 'coat' || k === 'tape') && !showCoat) v = false;
     if (/^ms\d/.test(k) && !cut && (showCoat || fin)) v = false;   // МС снаружи — под битумом
     if (k === 'form') v = v && !!cur && cur.has('form');   // опалубка: стоит в шаге «опалубка и скобы»; бетонирование и распалубка — в анимации
+    if (k === 'ugv') v = (!st || st.fin) && expTarget === 0 && !inside;   // уровень грунтовых вод — в обзоре
     if (k === 'surf' && showCoat && !done) v = false;   // гидроизоляция: покрытие у люка убираем, чтобы была видна горловина
     if (inside && (ud.part === 'lid' || ud.part === 'grate' || k === 'coat' || k === 'tape')) v = false;   // изнутри: крышка люка открыта, решётка откинута — сверху небо
     m.visible = !!v;
@@ -262,6 +267,9 @@ function loop(now) {
       const z = k === 'tape' ? tp.z : (rg ? (rg.z0 + rg.z1) / 2 : M.V / 2), p = new THREE.Vector3(-right.x / rl * R, -right.y / rl * R, z).project(camera);
       const y = Math.max((1 - p.y) / 2 * H, yPrev + 38); yPrev = y;
       d.style.display = ''; d.style.left = Math.max(84, (p.x + 1) / 2 * W) + 'px'; d.style.top = y + 'px'; } }
+  if (ugvLbl) { const on = showLbl && SC.meshes.some(m => m.userData.key === 'ugv' && m.visible);
+    if (!on) ugvLbl.style.display = 'none';
+    else { const Rw = M.surfR + .35, p = new THREE.Vector3(right.x / rl * Rw, right.y / rl * Rw, M.zU).project(camera); ugvLbl.style.display = ''; ugvLbl.style.left = ((p.x + 1) / 2 * W) + 'px'; ugvLbl.style.top = ((1 - p.y) / 2 * H) + 'px'; } }
   pos.sort((a, b) => a.y - b.y); let yl = -1e9;
   for (const q of pos) { const y = Math.max(q.y, yl + 30); yl = y; q.d.style.left = q.x + 'px'; q.d.style.top = y + 'px'; }
   const card = $('#card'); if (!card.hidden) card.style.bottom = ($('.tools').offsetHeight + 16) + 'px';
@@ -413,13 +421,15 @@ function animPlanVV(i) {
   const msBefore = msAll.filter(m => m.userData.z0 <= zSplit), msAfter = msAll.filter(m => m.userData.z0 > zSplit);
   if (msBefore.length) { T.push({type: 'drop', ms: msBefore, dz: .5, t0: 0, d: .7, hide: true}); t = .85; }
   if (cur.has('base')) { T.push({type: 'grow', ms: ms('base'), pivot: M.zBase, t0: 0, d: 1.4}); t = 1.4; }
-  if (cur.has('pipe')) { T.push({type: 'slide', ms: ms('pipe'), d0: 1.6, t0: 0, d: 1.6}); t = 1.6; }
+  if (cur.has('gil') && cur.has('pipe')) { T.push({type: 'slide', ms: ms('gil'), d0: .5, t0: 0, d: .9, hide: true}); T.push({type: 'slide', ms: ms('pipe'), d0: 1.6, t0: .9, d: 1.6, hide: true}); t = 2.5; }
+  else if (cur.has('pipe')) { T.push({type: 'slide', ms: ms('pipe'), d0: 1.6, t0: 0, d: 1.6}); t = 1.6; }
   if (cur.has('form')) {   // опалубка: щиты встают снизу вверх, потом разрез — видно внутренний щит
     T.push({type: 'grow', ms: ms('form'), pivot: -.02, t0: 0, d: 1.6, hide: true});
     T.push({type: 'cut', t0: 1.8}); t = 2.7; }
   if (cur.has('skw')) { const g = new Map(); for (const m of SC.meshes) if (m.userData.key === 'sk' && m.userData.of === 'skw') { const z = Math.round(m.userData.z0 * 100); if (!g.has(z)) g.set(z, []); g.get(z).push(m); }
     const t1 = t;   // скобы — через отверстия во внутреннем щите, сверху вниз по одной
     [...g.keys()].sort((a, b) => b - a).forEach((z, j) => T.push({type: 'poke', ms: g.get(z), dx: .22, t0: t1 + j * .32, d: .35, hide: true})); t = t1 + g.size * .32 + .6; }
+  if (cur.has('gil') && !cur.has('pipe')) { T.push({type: 'slide', ms: ms('gil'), d0: .45, t0: t, d: .8, hide: true}); t += 1.0; }   // гильзы — в опалубку по осям труб
   if (cur.has('wall')) {
     const wall = SC.meshes.filter(m => m.userData.key === 'wall'), wcoat = SC.meshes.filter(m => m.userData.key === 'coat' && m.userData.of === 'wall');
     if (ms('form').length) {   // автобетоносмеситель: подъезд задом, лоток вниз, бетон в опалубку, лоток вверх, распалубка, отъезд
@@ -435,6 +445,7 @@ function animPlanVV(i) {
   const many = elK.length > 2; let land = t;
   elK.forEach((k, n) => {
     const e = M.els.find(x => x.key === k), body = SC.meshes.filter(m => m.userData.key === k || (m.userData.key === 'coat' && m.userData.of === k));
+    if (e.kind === 'НБ') { T.push({type: 'grow', ms: body, pivot: e.z0, t0: t, d: 1.4, hide: true}); land = t + 1.4; t = many ? t + .5 : land; return; }
     if (e.kind === 'КО') { const g = new Map(); for (const m of body) { const j = Math.max(0, Math.round((zMinOf(m) - e.z0) / .08)); if (!g.has(j)) g.set(j, []); g.get(j).push(m); }
       [...g.keys()].sort((a, b) => a - b).forEach((j, q) => T.push({type: 'drop', ms: g.get(j), dz: .55, t0: t + q * .4, d: .5, hide: true})); land = t + (g.size - 1) * .4 + .5; t = many ? t + .5 : land; return; }
     if (e.kind === 'ЛЮК') { T.push({type: 'drop', ms: body, dz: .7, t0: t, d: .9, hide: true}); land = t + .9; t = many ? t + .5 : land; return; }
@@ -471,7 +482,8 @@ function animPlan(i) {
   let land = t;
   for (const k of elK) {
     const e = M.els.find(x => x.key === k), body = SC.meshes.filter(m => m.userData.key === k || (m.userData.key === 'coat' && m.userData.of === k));
-    if (e && e.kind === 'КО') {   // опорные кольца — по одному, вручную
+    if (e && e.kind === 'НБ') { T.push({type: 'grow', ms: body, pivot: e.z0, t0: t, d: 1.4, hide: true}); land = t + 1.4; }   // набетонка — бетонируется на месте
+    else if (e && e.kind === 'КО') {   // опорные кольца — по одному, вручную
       const g = new Map(); for (const m of body) { const j = Math.max(0, Math.round((zMinOf(m) - e.z0) / .08)); if (!g.has(j)) g.set(j, []); g.get(j).push(m); }
       [...g.keys()].sort((a, b) => a - b).forEach((j, n) => T.push({type: 'drop', ms: g.get(j), dz: .55, t0: t + n * .45, d: .55, hide: true}));
       land = t + (g.size - 1) * .45 + .55;
@@ -638,7 +650,7 @@ function animApply(t) {
           rig.g.visible = true; rig.sl.visible = up === 0; rig.g.position.set(r.cx, r.cy, r.top + tr.dz * k + H + 3 * easeIO(up)); }
         else if (rig.cur === tr) rig.g.visible = false;
       } }
-    else if (tr.type === 'slide') { const k = 1 - easeOut(p); for (const m of tr.ms) { const a = m.rotation.z; m.position.x = m.userData.ax + Math.cos(a) * tr.d0 * k; m.position.y = m.userData.ay + Math.sin(a) * tr.d0 * k; } }
+    else if (tr.type === 'slide') { const k = 1 - easeOut(p); for (const m of tr.ms) { if (tr.hide) m.visible = m.userData.av && !before; const a = m.rotation.z; m.position.x = m.userData.ax + Math.cos(a) * tr.d0 * k; m.position.y = m.userData.ay + Math.sin(a) * tr.d0 * k; } }
     else if (tr.type === 'grow') { const s = Math.max(.002, easeOut(p)); for (const m of tr.ms) { m.visible = m.userData.av && !(tr.hide && before); m.scale.z = s; m.position.z = m.userData.z0 * s + tr.pivot * (1 - s); } }
     else if (tr.type === 'paint') {   // битум «поднимается» по разложенным элементам снизу вверх
       const cm = SC.meshes.find(m => m.userData.key === 'coat'); if (!cm) continue;
@@ -697,7 +709,8 @@ function animTick(now) {
 function buildPanelVV(w) {
   const mm = v => Math.round(v * 1000), g0 = M.hatches[0], nG = M.hatches.length;
   const chips = ['В1', M.rect ? `${S(w, 'pk')} ${N(w, 'A')}×${N(w, 'B')}` : `Ø${mm(M.D)}`, `Ду${mm(M.Du)}${M.du ? ' + ду' + mm(M.du) : ''}`, KC.PLACE[M.place] || '', 'люк ' + S(w, 'hatch') + (nG > 1 ? ' ×' + nG : '')].filter(Boolean).map(c => `<span class="chip">${esc(c)}</span>`)
-    .concat(M.g1000 ? ['<span class="chip">горловина Ø1000</span>'] : [], M.pg ? ['<span class="chip">ПГ</span>'] : [], M.seis ? [`<span class="chip ms">сейсмика ${esc(S(w, 'seism'))} б.</span>`] : []);
+    .concat(M.g1000 ? ['<span class="chip">горловина Ø1000</span>'] : [], M.pg ? ['<span class="chip">ПГ</span>'] : [], M.seis ? [`<span class="chip ms">сейсмика ${esc(S(w, 'seism'))} б.</span>`] : [],
+      M.hatches.some(g => g.nab) ? ['<span class="chip">набетонка</span>'] : [], M.okl ? ['<span class="chip ugv">вода выше перекрытия</span>'] : []);
   const dimsOf = m => { const d = M.dims[m]; if (d) { const a = d.din ? `Ø${d.din}/` : ''; const b = /×/.test(d.dout) ? d.dout : (d.din ? d.dout : 'Ø' + d.dout); return `${a}${b}×${d.h}`; }
     const r = VV.RE[m]; return r ? (/^Б\d/.test(m) ? `${r[0]}×${r[2]}, L ${r[1]}` : `${r[0]}×${r[1]}×${r[2]}`) : /^Решётка/.test(m) ? 'рамка 620×620' : ''; };
   const msgs = [S(w, 'msg')].concat(M.warn).filter(x => x && x !== 'ОК');
@@ -711,7 +724,10 @@ function buildPanelVV(w) {
       <tr><td>Раскладка</td><td class="r">по плану Альбома IV (АС-8…12)</td></tr>${M.lay.type === 'S' ? `<tr><td>Ширины плит / длина камеры</td><td class="r">${mm(M.lay.sum)} / ${N(w, 'A')} мм</td></tr>` : ''}</tbody></table></div>` : ''}
     <div><h2>Основание и гидроизоляция</h2><table><tbody>
       <tr><td>Основание (${esc(M.gruntName.split(' — ')[0])})</td><td class="r">${M.base.map(b => esc(b.n)).join('<br>')}${M.zamok ? '<br>водоупорный замок' : ''}</td></tr>
-      <tr><td>Снаружи</td><td class="r">горячий битум, ${fmt(N(w, 'gout'))} м²</td></tr><tr><td>Внутри</td><td class="r">${fmt(N(w, 'gin'))} м²</td></tr></tbody></table>
+      <tr><td>Снаружи</td><td class="r">${M.okl ? `оклеечная: гидроизол 2–3 слоя на мастике, до ${sgn(M.zOkl - M.zg)} м` : 'горячий битум'}, ${fmt(N(w, 'gout'))} м²</td></tr><tr><td>Внутри</td><td class="r">${fmt(N(w, 'gin'))} м²</td></tr>
+      ${M.ugv !== null ? `<tr><td>Грунтовые воды</td><td class="r">УГВ ${fmt(M.ugv)} м от земли${M.wetV ? '' : ' — ниже колодца'}</td></tr>` : ''}${M.beton ? `<tr><td>Бетон</td><td class="r">${esc(M.beton)}</td></tr>` : ''}
+      ${M.gil ? `<tr><td>Гильзы (стальной футляр)</td><td class="r">${[...new Set(M.pipes.filter(p => p.sl).map(p => `Ø${p.gD}×${p.gSmm}`))].join(', ')} · L ${mm(M.gilL)} · ${M.gil} шт.</td></tr>` : ''}
+      ${M.hatches.some(g => g.nab) ? `<tr><td>Набетонка горловины</td><td class="r">М100 · h ${mm(M.nabH)}${nG > 1 ? ' ×' + nG : ''} · ${fmt(M.nabV, 3)} м³</td></tr>` : ''}</tbody></table>
       <div class="note">ТПР 901-09-11.84, Альбом ${M.rect ? 'IV' : 'II'}, лист АС-1. Арматура (задвижки, фасонные части) в 3D пока не показана.</div></div>
     <div class="msg ${msgs.length ? 'bad' : ''}">Проверка: ${msgs.length ? msgs.map(esc).join('; ') : 'ОК'}</div>
     <div class="note">Модель построена по данным таблицы «Авто Колодцы В1», переданным в ссылке. Демонстрационная версия KOLSB.</div>`;
@@ -721,7 +737,8 @@ function buildPanel(w, obj) {
   const mm = v => Math.round(v * 1000), nR = M.rings.length;
   const rsum = M.rings.reduce((s, r) => s + (r.z1 - r.z0) + KC.SEAM, 0), gW = M.ztop - M.V;
   const chips = [`Ø${Math.round(M.D * 1000)}`, `Ду${Math.round(M.Du * 1000)}`, KC.PLACE[M.place] || '', 'люк ' + S(w, 'hatch')].filter(Boolean).map(c => `<span class="chip">${esc(c)}</span>`)
-    .concat(M.per ? [`<span class="chip per">перепадный ${fmt(N(w, 'drop'))} м</span>`] : []).concat(M.seis ? [`<span class="chip ms">сейсмика ${esc(S(w, 'seism'))} б.</span>`] : []);
+    .concat(M.per ? [`<span class="chip per">перепадный ${fmt(N(w, 'drop'))} м</span>`] : []).concat(M.seis ? [`<span class="chip ms">сейсмика ${esc(S(w, 'seism'))} б.</span>`] : [])
+    .concat(M.nabE ? ['<span class="chip">набетонка</span>'] : []).concat(M.okl ? ['<span class="chip ugv">вода выше перекрытия</span>'] : []);
   const ringGroups = []; M.rings.slice().reverse().forEach(r => { const g = ringGroups[ringGroups.length - 1]; if (g && g.mark === r.mark) g.n++; else ringGroups.push({mark: r.mark, n: 1, h: r.z1 - r.z0}); });
   const dimsOf = m => { const d = M.dims[m]; if (!d) return ''; const a = d.din ? `Ø${d.din}/` : ''; const b = /×/.test(d.dout) ? d.dout : (d.din ? d.dout : 'Ø' + d.dout); return `${a}${b}×${d.h}`; };
   $('#panelBody').innerHTML = `
@@ -731,6 +748,7 @@ function buildPanel(w, obj) {
     <div><h2>Высоты складываются так</h2><table><tbody>
       ${ringGroups.map(g => `<tr><td>${esc(g.mark)}${g.n > 1 ? ' ×' + g.n : ''}</td><td class="r">${g.n > 1 ? g.n + ' × ' : ''}(${mm(g.h)} + 10)</td></tr>`).join('')}
       <tr class="sum"><td>Рабочая часть</td><td class="r ok">${mm(rsum)} мм ✓</td></tr>
+      ${M.nabE ? `<tr><td>в т.ч. набетонка М100</td><td class="r">${mm(M.nabE.z1 - M.nabE.z0)} мм · ${fmt(M.nabV, 3)} м³</td></tr>` : ''}${M.nabJ > .0005 ? `<tr><td>в т.ч. шов под КО6 (добор)</td><td class="r">10 + ${mm(M.nabJ)} мм</td></tr>` : ''}
       <tr class="sum"><td>Горловина с плитой и люком</td><td class="r ok">${mm(gW)} мм ✓</td></tr></tbody></table>
       <div class="note">Шов на растворе — 10 мм. Суммы совпадают с расчётом «Авто Колодцев».</div></div>
     <div><h2>Элементы</h2><table><thead><tr><th>Марка</th><th>Размеры, мм</th><th class="r">Шт.</th><th class="r">кг</th></tr></thead><tbody>
@@ -739,7 +757,8 @@ function buildPanel(w, obj) {
       <tr><td>Шов с плитой днища</td><td class="r">обойма — бетон лотка</td></tr></tbody></table></div>` : ''}
     <div><h2>Основание и гидроизоляция</h2><table><tbody>
       <tr><td>Основание (грунт ${M.grunt})</td><td class="r">${M.base.map(b => esc(b.n)).join('<br>')}${M.zamok ? '<br>водоупорный замок 600×400' : ''}</td></tr>
-      <tr><td>Снаружи</td><td class="r">битумная мастика</td></tr>
+      <tr><td>Снаружи</td><td class="r">${M.okl ? `оклеечная: гидроизол 2–3 слоя на мастике, до ${sgn(M.zOkl - M.zg)} м` : 'битумная мастика'}</td></tr>
+      ${M.ugv !== null ? `<tr><td>Грунтовые воды</td><td class="r">УГВ ${fmt(M.ugv)} м от земли${M.wetV ? '' : ' — ниже колодца'}</td></tr>` : ''}${M.beton ? `<tr><td>Бетон</td><td class="r">${esc(M.beton)}</td></tr>` : ''}
       <tr><td>Лента на стыки</td><td class="r">гидроизол ГИ-Г${M.tapeN > 1 ? ' в ' + M.tapeN + ' слоя' : ''} · ${M.tapes.length} стыков · полоса ${fmt(M.tapeW)} м · ${fmt(N(w, 'lenta'))} м²</td></tr></tbody></table>
       <div class="note">Основание — по ТПР 902-09-22.84, Альбом II, лист АС-1.</div></div>
     <div class="msg ${S(w, 'msg') === 'ОК' ? '' : 'bad'}">Проверка расчёта: ${esc(S(w, 'msg'))}</div>
