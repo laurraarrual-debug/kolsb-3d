@@ -67,6 +67,7 @@ tr.sum td{font-weight:700;background:var(--surface-2)} tr.sum td.ok{color:var(--
 .msg{font-size:13px;border-radius:8px;padding:8px 10px;background:var(--surface-2)}
 .msg.bad{color:var(--warn)}
 .sheetbtn{display:none}
+.sheethead{display:none}
 .land{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--bg)}
 .land .card{max-width:440px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px;text-align:center}
 .land h1{font:700 22px var(--f);margin:0 0 8px}
@@ -77,6 +78,9 @@ tr.sum td{font-weight:700;background:var(--surface-2)} tr.sum td.ok{color:var(--
   .panel{position:fixed;left:0;right:0;bottom:0;max-height:78vh;border-left:0;border-top:1px solid var(--line);border-radius:16px 16px 0 0;transform:translateY(100%);transition:transform .25s ease;z-index:5;padding-bottom:max(16px,env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,.2)}
   .panel.open{transform:none}
   .sheetbtn{display:inline-block}
+  .sheethead{display:flex;align-items:center;gap:10px;position:sticky;top:-16px;z-index:2;margin:-16px -16px 0;padding:14px 12px 10px 16px;background:var(--surface);border-bottom:1px solid var(--line);border-radius:16px 16px 0 0;touch-action:none}
+  .sheethead .grip{position:absolute;left:50%;top:6px;width:42px;height:4px;border-radius:2px;background:var(--line);transform:translateX(-50%)}
+  .sheethead b{flex:1;font-size:15px}
   .ttl h1{font-size:18px}
   .btn{padding:10px 11px;font-size:13.5px}
 }
@@ -120,7 +124,7 @@ tr.sum td{font-weight:700;background:var(--surface-2)} tr.sum td.ok{color:var(--
       <button class="btn an" id="aStop" aria-label="Закончить">✕</button>
     </div>
   </section>
-  <aside class="panel" id="panel"></aside>
+  <aside class="panel" id="panel" aria-label="Данные колодца"><div class="sheethead" id="sheetHead"><span class="grip"></span><b>Данные колодца</b><button class="btn" id="bClose" aria-label="Закрыть данные">✕ Закрыть</button></div><div id="panelBody"></div></aside>
 </div>
 <div class="land" id="land" hidden><div class="card"><h1>Колодец 3D</h1><p id="landTxt">Эта страница показывает 3D-модель колодца. Откройте её по QR-коду из паспорта сборки.</p><button class="btn main" id="bDemo">Показать пример</button></div></div>
 <script src="vendor/three.min.js"></script>
@@ -180,10 +184,21 @@ function initGL() {
   requestAnimationFrame(loop);
 }
 function resetView(visOnly) {
+  const pre = visOnly && stepIdx >= 0 && steps[stepIdx].pre;   // «битум на земле»: кадр — по разложенным элементам
+  if (pre) KC.explode(SC, 1.4);
   const box = new THREE.Box3(); for (const m of SC.meshes) if (!m.userData.cap && (!visOnly || m.visible) && m.userData.key !== 'surf') box.expandByObject(m);
   if (box.isEmpty()) for (const m of SC.meshes) if (!m.userData.cap) box.expandByObject(m);
+  if (pre) KC.explode(SC, expT);
   const c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3()).length();
   const vw = $('#view'), aspect = (vw.clientWidth / vw.clientHeight) || 1; camera.aspect = aspect; camera.updateProjectionMatrix();
+  if (visOnly && !$('#card').hidden) {   // шаг: вписать в часть экрана над карточкой — как в анимации; в разрезе В1 — лицом к плоскости разреза
+    const c0 = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3()), Rh = Math.hypot(sz.x, sz.y) / 2, tv = Math.tan(camera.fov * Math.PI / 360), th = tv * aspect;
+    const el = .42, az = cut && isVV() ? VV.azCut(M) : M.go - Math.PI / 2 - .4, sh = Math.min(.6, ($('#card').offsetHeight + $('.tools').offsetHeight + 24) / Math.max(1, vw.clientHeight));
+    const Hb = sz.z * Math.cos(el) + 2 * Rh * Math.sin(el), d = Math.max(Hb / (2 * tv * (1 - sh)), 2 * Rh / (2 * th)) / .9 + Rh * .5;
+    c0.z -= d * tv * sh / Math.cos(el);
+    camera.position.set(c0.x + d * Math.cos(el) * Math.cos(az), c0.y + d * Math.cos(el) * Math.sin(az), c0.z + d * Math.sin(el));
+    controls.target.copy(c0); controls.update(); needs = true; return;
+  }
   const vf = camera.fov * Math.PI / 180, hf = 2 * Math.atan(Math.tan(vf / 2) * aspect), az = M.go - Math.PI / 2 - .4, el = .42, d = (size / 2) / Math.sin(Math.min(vf, hf) / 2) * .92;
   camera.position.set(c.x + d * Math.cos(el) * Math.cos(az), c.y + d * Math.cos(el) * Math.sin(az), c.z + d * Math.sin(el));
   controls.target.copy(c);
@@ -200,10 +215,11 @@ function applyState() {
   for (const m of SC.meshes) {
     const k = m.userData.key, ud = m.userData;
     let v = (ud.cap ? cut && !cutSk : true);
-    if (st && st.pre) v = v && (k === 'coat' ? !!ud.of && elKeys.has(ud.of) : elKeys.has(k));
+    if (st && st.pre) v = v && (k === 'coat' ? !!ud.of && elKeys.has(ud.of) && ud.of !== 'wall' : elKeys.has(k) && k !== 'wall');   // монолитные стены В1 — не «на земле»
     else if (done) v = v && (k === 'coat' ? done.has('coat') && done.has(ud.of) : k === 'tape' || k === 'sk' ? done.has(ud.of) : done.has(k));   // битум — с самого начала, лента — сразу после элемента над стыком
     else if ((k === 'coat' || k === 'tape') && !showCoat) v = false;
     if (/^ms\d/.test(k) && !cut && (showCoat || fin)) v = false;   // МС снаружи — под битумом
+    if (k === 'form') v = v && !!cur && cur.has('form');   // опалубка: стоит в шаге «опалубка и скобы»; бетонирование и распалубка — в анимации
     if (k === 'surf' && showCoat && !done) v = false;   // гидроизоляция: покрытие у люка убираем, чтобы была видна горловина
     if (inside && (ud.part === 'lid' || ud.part === 'grate' || k === 'coat' || k === 'tape')) v = false;   // изнутри: крышка люка открыта, решётка откинута — сверху небо
     m.visible = !!v;
@@ -229,7 +245,7 @@ function loop(now) {
   const st = stepIdx >= 0 ? steps[stepIdx] : null, done = st ? new Set(steps.slice(0, stepIdx + 1).flatMap(x => x.els)) : null;
   const pos = [], VA = isVV() ? VV.labelAnchors(M, [right.x / rl, right.y / rl]) : null;
   lblEls.forEach(({e, d}, i) => {
-    const vis = showLbl && !inside && (anim ? anim.lbl.has(e.key) : st && st.pre ? elKeys.has(e.key) : (!done || done.has(e.key)));
+    const vis = showLbl && !inside && (anim ? anim.lbl.has(e.key) : st && st.pre ? elKeys.has(e.key) && e.key !== 'wall' : (!done || done.has(e.key)));
     if (!vis) { d.style.display = 'none'; return; }
     let p;
     if (VA) { const a = VA.find(x => x.key === e.key); p = new THREE.Vector3(a.p[0], a.p[1], a.p[2] + expT * .32 * M.lvlOf(e.key)).project(camera); }
@@ -310,7 +326,7 @@ function inMove(dz) {
 function frame() {
   const out = () => { if (inside) setInside(false); };
   // шаги: элементы — снаружи (битум и лента видны), трубы, лоток, скобы — в разрезе
-  const stepCut = () => { const st = steps[stepIdx]; cut = !!st && !st.pre && !st.fin && !st.kind; };
+  const stepCut = () => { const st = steps[stepIdx]; cut = !!st && !st.pre && !st.fin && (!st.kind || st.kind === 'FORM'); };   // опалубка — в разрезе: видны скобы во внутреннем щите
   $('#bCut').onclick = () => { out(); cut = !cut; applyState(); };
   $('#bExp').onclick = () => { out(); expTarget = expTarget > 0 ? 0 : 1; applyState(); };
   $('#bLbl').onclick = () => { showLbl = !showLbl; applyState(); };
@@ -322,7 +338,15 @@ function frame() {
   $('#bSteps').onclick = () => { out(); if (stepIdx >= 0) { stepIdx = -1; cut = false; applyState(); resetView(); } else { stepIdx = 0; stepCut(); expTarget = 0; applyState(); resetView(true); } };
   $('#next').onclick = () => { stepIdx = Math.min(steps.length - 1, stepIdx + 1); stepCut(); applyState(); resetView(true); };
   $('#prev').onclick = () => { stepIdx = Math.max(0, stepIdx - 1); stepCut(); applyState(); resetView(true); };
-  $('#bInfo').onclick = () => $('#panel').classList.toggle('open');
+  $('#bInfo').onclick = () => sheet(!$('#panel').classList.contains('open'));
+  $('#bClose').onclick = () => sheet(false);
+  $('.stage').addEventListener('pointerdown', ev => { if ($('#panel').classList.contains('open') && !ev.target.closest('.tools')) sheet(false); });
+  addEventListener('keydown', ev => { if (ev.key === 'Escape' && $('#panel').classList.contains('open')) { ev.stopImmediatePropagation(); sheet(false); } });
+  addEventListener('popstate', () => { if ($('#panel').classList.contains('open')) sheet(false, true); });
+  { let y0 = null; const hd = $('#sheetHead');   // свайп вниз по шапке — закрыть
+    hd.addEventListener('pointerdown', ev => { y0 = ev.clientY; });
+    hd.addEventListener('pointermove', ev => { if (y0 !== null && ev.clientY - y0 > 60) { y0 = null; sheet(false); } });
+    hd.addEventListener('pointerup', () => { y0 = null; }); hd.addEventListener('pointercancel', () => { y0 = null; }); }
   $('#bPlay').onclick = () => { out(); animStart(); };
   $('#aPlay').onclick = () => { if (!anim) return; if (anim.done) { animGo(0); anim.paused = false; } else anim.paused = !anim.paused; animUi(); };
   $('#aNext').onclick = () => { if (anim && anim.i < steps.length - 1) { animGo(anim.i + 1); animUi(); } };
@@ -332,6 +356,15 @@ function frame() {
   controls.addEventListener('start', () => { if (anim) anim.user = 1e15; });
   controls.addEventListener('end', () => { if (anim) { anim.user = performance.now() + 2500; anim.resync = true; } });
   addEventListener('keydown', ev => { if (!anim) return; if (ev.key === ' ') { ev.preventDefault(); $('#aPlay').click(); } else if (ev.key === 'ArrowRight') $('#aNext').click(); else if (ev.key === 'ArrowLeft') $('#aPrev').click(); else if (ev.key === 'Escape') animStop(); });
+}
+// лист «Данные» на телефоне: открыт — запись в истории, чтобы «назад» закрывал лист, а не уходил со страницы
+function sheet(on, fromPop) {
+  const p = $('#panel'), was = p.classList.contains('open');
+  if (on === was) return;
+  p.classList.toggle('open', on);
+  $('#bInfo').setAttribute('aria-expanded', on);
+  if (on) { try { history.pushState({sheet: 1}, ''); } catch (e) {} p.scrollTop = 0; }
+  else if (!fromPop && history.state && history.state.sheet) { try { history.back(); } catch (e) {} }
 }
 /* ---------- анимация сборки: те же шаги и тот же порядок, что в паспорте ----------
    битум — на элементы на земле; кран опускает элемент на место; лента сразу наматывается на стык под ним;
@@ -381,9 +414,24 @@ function animPlanVV(i) {
   if (msBefore.length) { T.push({type: 'drop', ms: msBefore, dz: .5, t0: 0, d: .7, hide: true}); t = .85; }
   if (cur.has('base')) { T.push({type: 'grow', ms: ms('base'), pivot: M.zBase, t0: 0, d: 1.4}); t = 1.4; }
   if (cur.has('pipe')) { T.push({type: 'slide', ms: ms('pipe'), d0: 1.6, t0: 0, d: 1.6}); t = 1.6; }
+  if (cur.has('form')) {   // опалубка: щиты встают снизу вверх, потом разрез — видно внутренний щит
+    T.push({type: 'grow', ms: ms('form'), pivot: -.02, t0: 0, d: 1.6, hide: true});
+    T.push({type: 'cut', t0: 1.8}); t = 2.7; }
   if (cur.has('skw')) { const g = new Map(); for (const m of SC.meshes) if (m.userData.key === 'sk' && m.userData.of === 'skw') { const z = Math.round(m.userData.z0 * 100); if (!g.has(z)) g.set(z, []); g.get(z).push(m); }
-    [...g.keys()].sort((a, b) => a - b).forEach((z, j) => T.push({type: 'drop', ms: g.get(z), dz: .22, t0: j * .18, d: .3, hide: true})); t = g.size * .18 + .5; }
-  if (cur.has('wall')) { T.push({type: 'grow', ms: SC.meshes.filter(m => m.userData.key === 'wall'), pivot: 0, t0: 0, d: 2.4}); t = 2.5; }
+    const t1 = t;   // скобы — через отверстия во внутреннем щите, сверху вниз по одной
+    [...g.keys()].sort((a, b) => b - a).forEach((z, j) => T.push({type: 'poke', ms: g.get(z), dx: .22, t0: t1 + j * .32, d: .35, hide: true})); t = t1 + g.size * .32 + .6; }
+  if (cur.has('wall')) {
+    const wall = SC.meshes.filter(m => m.userData.key === 'wall'), wcoat = SC.meshes.filter(m => m.userData.key === 'coat' && m.userData.of === 'wall');
+    if (ms('form').length) {   // автобетоносмеситель: подъезд задом, лоток вниз, бетон в опалубку, лоток вверх, распалубка, отъезд
+      const P = {arrive: [0, 3], chute: [3, 1], flow: [4, .4], pour: [4.4, 5], stop: [9.4, .4], up: [9.8, .8], strip: [10, 1.6], leave: [10.6, 2.6]};
+      T.push({type: 'mixer', t0: 0, P});
+      T.push({type: 'form', ms: ms('form'), P});
+      T.push({type: 'grow', ms: wall, pivot: 0, t0: P.pour[0], d: P.pour[1], hide: true});
+      if (wcoat.length) T.push({type: 'grow', ms: wcoat, pivot: 0, t0: P.strip[0] + P.strip[1], d: 1, hide: true});
+      T.push({type: 'label', keys: ['wall'], t0: P.stop[0]});
+      return {T, dur: P.leave[0] + P.leave[1] + .6, pour: true};
+    }
+    T.push({type: 'grow', ms: wall, pivot: 0, t0: 0, d: 2.4}); t = 2.5; }
   const many = elK.length > 2; let land = t;
   elK.forEach((k, n) => {
     const e = M.els.find(x => x.key === k), body = SC.meshes.filter(m => m.userData.key === k || (m.userData.key === 'coat' && m.userData.of === k));
@@ -451,6 +499,85 @@ function animPlan(i) {
   if (cur.has('surf')) { T.push({type: 'grow', ms: ms('surf'), pivot: Math.min(...ms('surf').map(zMinOf)), t0: t + .1, d: 1.1, hide: true}); t += 1.2; }
   return {T, dur: t + 1.35};
 }
+/* ---------- автобетоносмеситель: подъезжает задом к котловану, лоток вниз, бетон в опалубку ---------- */
+let mixer = null;
+function mixerGet() {
+  if (mixer) return mixer;
+  const T3 = THREE, g = new T3.Group(), M2 = (c, o = {}) => new T3.MeshStandardMaterial(Object.assign({color: c, roughness: .55, metalness: .1}, o));
+  const white = M2(0xeeeeea), dark = M2(0x262a2e, {roughness: .7}), glass = M2(0x24384a, {roughness: .15, metalness: .4}), orng = M2(0xe8901e, {roughness: .45}), grey = M2(0x6d7378, {metalness: .5, roughness: .4}),
+    conc = M2(KC.COL.fresh, {roughness: .95}), tyre = M2(0x18191b, {roughness: .9}), rim = M2(0xb9bec2, {metalness: .6, roughness: .35}), lamp = M2(0xfff3c4, {emissive: 0x6b5a20});
+  const box = (x0, x1, y0, y1, z0, z1, m) => { const b = new T3.Mesh(new T3.BoxGeometry(x1 - x0, y1 - y0, z1 - z0), m); b.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2); g.add(b); return b; };
+  // рама, кабина, бампер, фары, крылья
+  box(.2, 7.55, -.48, .48, .82, 1.12, dark); box(.2, 5.7, -1.18, 1.18, 1.1, 1.18, grey);
+  box(5.85, 7.65, -1.22, 1.22, 1.0, 3.05, white); box(7.62, 7.69, -1.08, 1.08, 2.05, 2.86, glass);
+  for (const sy of [-1, 1]) { box(6.35, 7.5, sy * 1.21 - .03, sy * 1.21 + .03, 2.05, 2.78, glass); box(7.66, 7.72, sy * .8 - .18, sy * .8 + .18, 1.18, 1.36, lamp); }
+  box(7.6, 7.78, -1.2, 1.2, .55, .86, dark); box(5.85, 7.65, -1.23, 1.23, 2.98, 3.08, orng);
+  const wheels = [];
+  for (const x of [1.4, 2.82, 6.55]) for (const sy of [-1, 1]) {
+    const w = new T3.Group(); w.position.set(x, sy * 1.0, .52); g.add(w);
+    const t = new T3.Mesh(new T3.CylinderGeometry(.52, .52, .34, 28), tyre); w.add(t);
+    const r = new T3.Mesh(new T3.CylinderGeometry(.27, .27, .36, 6), rim); w.add(r);
+    wheels.push(w); box(x - .62, x + .62, sy * 1.0 - .2, sy * 1.0 + .2, 1.1, 1.16, dark); }
+  // барабан: ось от задней верхней точки к передней нижней; винтовая лопасть снаружи — видно вращение
+  const R = new T3.Vector3(.85, 0, 2.78), F = new T3.Vector3(5.4, 0, 1.98), ax = new T3.Group(); ax.position.copy(R);
+  ax.quaternion.setFromUnitVectors(new T3.Vector3(0, 1, 0), F.clone().sub(R).normalize()); g.add(ax);
+  const L = R.distanceTo(F), prof = [[0, -.02], [.42, -.02], [.5, .25], [1.02, 1.15], [1.18, 2.0], [1.18, 2.9], [.98, 3.75], [.6, L - .1], [0, L]].map(([r, y]) => new T3.Vector2(r, y));
+  const drum = new T3.Group(); ax.add(drum);
+  drum.add(new T3.Mesh(new T3.LatheGeometry(prof, 48), orng));
+  const rOf = y => { for (let i = 1; i < prof.length; i++) if (y <= prof[i].y) { const a = prof[i - 1], b = prof[i]; return a.x + (b.x - a.x) * (y - a.y) / Math.max(1e-6, b.y - a.y); } return 0; };
+  for (const ph of [0, Math.PI]) { const pts = []; for (let i = 0; i <= 80; i++) { const y = .35 + (L - .9) * i / 80, a = ph + 4.2 * Math.PI * i / 80, r = rOf(y) + .03; pts.push(new T3.Vector3(r * Math.cos(a), y, r * Math.sin(a))); }
+    drum.add(new T3.Mesh(new T3.TubeGeometry(new T3.CatmullRomCurve3(pts), 160, .045, 6), white)); }
+  box(1.5, 1.8, -.75, .75, 1.15, 2.2, grey); box(4.6, 4.9, -.6, .6, 1.15, 1.85, grey);   // опоры барабана
+  const hop = new T3.Mesh(new T3.CylinderGeometry(.55, .22, .55, 24, 1, true).rotateX(Math.PI / 2), grey); hop.position.set(.55, 0, 3.15); g.add(hop);   // загрузочная воронка
+  // лоток: шарнир сзади внизу; рыскание — к колодцу, тангаж — вниз
+  const hinge = new T3.Group(); hinge.position.set(-.25, 0, 1.55); g.add(hinge);
+  const pitch = new T3.Group(); hinge.add(pitch);
+  const ch = new T3.Group(); pitch.add(ch);
+  const chMesh = (x0, x1, y0, y1, z0, z1, m) => { const b = new T3.Mesh(new T3.BoxGeometry(x1 - x0, y1 - y0, z1 - z0), m); b.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2); ch.add(b); return b; };
+  const side = (() => { const br = M.pipes.find(p => p.branch); return br && Math.sin(br.ang) < 0 ? 1 : -1; })();   // сторона без ответвления
+  const ax2 = M.A / 2, by2 = M.B / 2, tt = M.t, gapY = 2.0, yT = side * (by2 + tt + gapY);
+  const Lc = Math.max(1.2, (tt / 2 + gapY - .25) / Math.cos(Math.PI / 6));   // лоток под 30° дотягивается до середины стены
+  chMesh(-Lc, 0, -.18, .18, -.01, .01, grey); chMesh(-Lc, 0, -.19, -.17, 0, .15, grey); chMesh(-Lc, 0, .17, .19, 0, .15, grey);
+  const inCh = chMesh(-Lc + .05, -.05, -.16, .16, .01, .05, conc); inCh.visible = false;
+  // струя бетона от конца лотка в опалубку и «шапка» в стене
+  const stream = new T3.Mesh(new T3.CylinderGeometry(.075, .095, 1, 14, 1, true), conc); stream.visible = false;
+  const blob = new T3.Mesh(new T3.SphereGeometry(.16, 16, 10).scale(1, 1, .45), conc); blob.visible = false;
+  SC.grp.add(stream); SC.grp.add(blob);
+  // полоса проезда под машиной (временная дорога), без котлована
+  const road = new T3.Mesh(new T3.BoxGeometry(32, 3.4, .12), M2(0x55595d, {roughness: 1})); road.position.set(15.4, 0, -.06); g.add(road);
+  g.rotation.z = side * Math.PI / 2; g.visible = false; SC.grp.add(g);
+  const base = new T3.Vector3(0, yT, M.zg);
+  // точки кадра (в осях колодца): задняя часть машины с барабаном и лоток
+  const toL = (x, y, z) => [x * Math.cos(g.rotation.z) - y * Math.sin(g.rotation.z) + base.x, x * Math.sin(g.rotation.z) + y * Math.cos(g.rotation.z) + base.y, z + base.z];
+  const frame = [toL(-.4, -1.3, 0), toL(-.4, 1.3, 0), toL(5.6, -1.3, 0), toL(5.6, 1.3, 0), toL(2.5, 0, 3.9), toL(-Lc * .87 - .25, 0, .4)];
+  mixer = {g, wheels, drum, hinge, pitch, ch, inCh, stream, blob, side, base, Lc, frame, target: new T3.Vector3(0, side * (by2 + tt / 2), M.V + .02)};
+  return mixer;
+}
+function mixerTick(t, P) {
+  const mx = mixerGet(), ph = (k) => cl01((t - P[k][0]) / P[k][1]);
+  const arrive = ph('arrive'), leave = ph('leave'), chDown = easeIO(ph('chute')) * (1 - easeIO(ph('up'))), flowOn = t >= P.flow[0] && t < P.stop[0] + P.stop[1];
+  // положение вдоль оси машины: издалека задним ходом — к краю котлована; в конце — вперёд и прочь
+  const off = 16 * (1 - easeOut(arrive)) + 20 * leave * leave;
+  const dirx = Math.cos(mx.g.rotation.z), diry = Math.sin(mx.g.rotation.z);
+  mx.g.position.set(mx.base.x + dirx * off, mx.base.y + diry * off, mx.base.z);
+  mx.g.visible = t < P.leave[0] + P.leave[1] + .3;
+  for (const w of mx.wheels) w.rotation.y = -off / .52;
+  mx.drum.rotation.y = t * (flowOn ? -4.2 : -1.6);   // при выгрузке — быстрее
+  mx.pitch.rotation.y = 1.1 * (1 - chDown) - Math.PI / 6 * chDown;   // убран (вверх) → рабочее положение (−30°)
+  mx.inCh.visible = flowOn && chDown > .95;
+  // струя: от конца лотка вниз в опалубку; растёт в начале, иссякает в конце
+  mx.g.updateMatrixWorld(true);
+  const endL = new THREE.Vector3(-mx.Lc + .05, 0, .02); mx.ch.localToWorld(endL); SC.grp.worldToLocal(endL);
+  const lvl = M.V * easeOut(cl01((t - P.pour[0]) / P.pour[1]));   // уровень бетона — как растёт стена
+  const tgt = mx.target.clone(); tgt.z = Math.max(.05, lvl);
+  const a = cl01((t - P.flow[0]) / P.flow[1]), b = cl01((t - P.stop[0]) / P.stop[1]);
+  if (flowOn && a > 0 && b < 1) {
+    const top = endL.clone().lerp(tgt, b), bot = endL.clone().lerp(tgt, a), len = Math.max(.01, top.distanceTo(bot));
+    mx.stream.visible = true; mx.stream.position.copy(top.clone().add(bot).multiplyScalar(.5)); mx.stream.scale.set(1, len, 1);
+    mx.stream.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), top.clone().sub(bot).normalize());
+    mx.blob.visible = a >= 1; mx.blob.position.set(tgt.x, tgt.y, tgt.z + .02); mx.blob.scale.setScalar(.8 + .25 * Math.sin(t * 9));   // «шапка» на поднимающемся бетоне
+  } else { mx.stream.visible = false; mx.blob.visible = false; }
+}
 function animStart() {
   if (inside) setInside(false);
   stepIdx = -1; expT = expTarget = 0; KC.explode(SC, 0);
@@ -465,6 +592,8 @@ function animReset() {   // все дорожки — в конечное пол
     if (m.userData.wrapMat) { m.userData.wrapMat.dispose(); m.userData.wrapMat = null; m.material = m.userData.base; } }
   const cm = SC.meshes.find(m => m.userData.key === 'coat'); if (cm) cm.userData.base.clippingPlanes = [];
   if (rig) rig.g.visible = false;
+  for (const m of SC.meshes) if (m.userData.key === 'form' && m.userData.base) { m.userData.base.opacity = 1; m.userData.base.depthWrite = true; }
+  if (mixer) { mixer.g.visible = false; mixer.stream.visible = false; mixer.blob.visible = false; }
 }
 function animGo(i) {
   animReset();
@@ -473,7 +602,7 @@ function animGo(i) {
   applyState(); expT = expTarget = st.pre ? 0 : 0; stepExp = false; KC.explode(SC, 0);
   if (st.pre) expTarget = 1.4;   // «на земле»: элементы разложены, мажем битумом
   const pl = animPlan(i); anim.T = pl.T; anim.dur = pl.dur; anim.orbit = !!pl.orbit;
-  anim.lbl = new Set(st.pre ? elKeys : steps.slice(0, i).flatMap(s => s.els));
+  anim.lbl = new Set(st.pre ? [...elKeys].filter(k => k !== 'wall') : steps.slice(0, i).flatMap(s => s.els));
   for (const m of SC.meshes) m.userData.av = m.visible;
   // кадр: то, что уже собрано, и текущий элемент (колодец «растёт» — камера отъезжает); на «битуме» — разложенные элементы; в конце — весь
   const box = new THREE.Box3();
@@ -482,6 +611,9 @@ function animGo(i) {
   box.min.z = Math.min(box.min.z, M.zBase); box.max.z += st.pre || st.fin ? .1 : .55;
   const R0 = Math.max(M.Rout, (M.pnR || 0) + .1); box.expandByPoint(new THREE.Vector3(-R0, -R0, box.min.z)); box.expandByPoint(new THREE.Vector3(R0, R0, box.min.z));
   if (st.pre) box.max.z = M.ztop + 1.4 * .32 * (M.els.length + 1);
+  anim.pour = !!pl.pour; anim.azGoal = undefined; anim.el = undefined;
+  if (pl.pour) { const mx = mixerGet(); for (const q of mx.frame) box.expandByPoint(SC.grp.localToWorld(new THREE.Vector3(...q)));
+    anim.azGoal = M.go + mx.side * Math.PI / 2 + 1.05; anim.el = .5; }
   anim.goal = box; anim.azCut = isVV() ? VV.azCut(M) : M.go - Math.PI / 2 - .4; anim.azSk = isVV() ? VV.azCut(M) : M.go + Math.PI + .35;
   animApply(0);
 }
@@ -523,6 +655,15 @@ function animApply(t) {
         const n0 = new THREE.Vector3(-Math.sin(a0), Math.cos(a0), 0), n1 = new THREE.Vector3(Math.sin(a1), -Math.cos(a1), 0);
         mt.clippingPlanes = [new THREE.Plane(n0, -(n0.x * cx + n0.y * cy)), new THREE.Plane(n1, -(n1.x * cx + n1.y * cy))]; mt.clipIntersection = th > Math.PI;
         m.material = mt; } }
+    else if (tr.type === 'poke') {   // скоба вдвигается изнутри колодца в отверстия щита
+      const k = 1 - easeOut(p);
+      for (const m of tr.ms) { m.visible = m.userData.av && !(tr.hide && before); m.position.x = m.userData.ax + Math.cos(m.rotation.z) * tr.dx * k; m.position.y = m.userData.ay + Math.sin(m.rotation.z) * tr.dx * k; } }
+    else if (tr.type === 'form') {   // опалубка во время бетонирования: видна, полупрозрачная; распалубка — щиты вверх и исчезают
+      const P = tr.P, ghost = cl01((t - P.chute[0] - .6) / .6), up = cl01((t - P.strip[0]) / P.strip[1]);
+      const op = up > 0 ? .38 * (1 - up) : 1 - .62 * ghost;
+      for (const m of tr.ms) { m.visible = up < 1; m.position.z = m.userData.z0 + 1.3 * easeIO(up); }
+      for (const mt of new Set(tr.ms.filter(m => !m.userData.line).map(m => m.userData.base))) { mt.opacity = op; mt.depthWrite = op > .99; } }
+    else if (tr.type === 'mixer') mixerTick(t, tr.P);
     else if (tr.type === 'label') { if (!before) tr.keys.forEach(k => anim.lbl.add(k)); }
     else if (tr.type === 'cut') {   // разрез посреди шага — показать скобы внутри кольца
       if (cut !== !before) { cut = cutSk = !before; applyState(); for (const m of SC.meshes) m.userData.av = m.visible; } }
@@ -541,11 +682,12 @@ function animTick(now) {
   const st = steps[anim.i], spd = anim.paused || anim.done ? 0 : anim.spd;
   if (anim.orbit) anim.az += dt * spd * .55;
   else if (cut) { let d = (cutSk ? anim.azSk : anim.azCut) - anim.az; d = Math.atan2(Math.sin(d), Math.cos(d)); anim.az += d * Math.min(1, dt * (cutSk ? 2.6 : 1.6)); }
+  else if (anim.azGoal !== undefined) { let d = anim.azGoal - anim.az; d = Math.atan2(Math.sin(d), Math.cos(d)); anim.az += d * Math.min(1, dt * 1.2) + dt * spd * .03; }
   else anim.az += dt * spd * .07;
   // вписать: по вертикали — в свободную от карточки часть экрана, по горизонтали — во всю ширину
   const box = anim.goal, c = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3()), Rh = Math.hypot(sz.x, sz.y) / 2;
   const vw = $('#view'), aspect = (vw.clientWidth / vw.clientHeight) || 1, tv = Math.tan(camera.fov * Math.PI / 360), th = tv * aspect;
-  const el = st.pre ? .3 : .38, sh = Math.min(.6, ($('#card').offsetHeight + $('.tools').offsetHeight + 24) / Math.max(1, vw.clientHeight));
+  const el = anim.el !== undefined ? anim.el : st.pre ? .3 : .38, sh = Math.min(.6, ($('#card').offsetHeight + $('.tools').offsetHeight + 24) / Math.max(1, vw.clientHeight));
   const Hb = sz.z * Math.cos(el) + 2 * Rh * Math.sin(el), d = Math.max(Hb / (2 * tv * (1 - sh)), 2 * Rh / (2 * th)) / .9 + Rh * .5;
   c.z -= d * tv * sh / Math.cos(el);
   const goal = new THREE.Vector3(c.x + d * Math.cos(el) * Math.cos(anim.az), c.y + d * Math.cos(el) * Math.sin(anim.az), c.z + d * Math.sin(el)), k = anim.snap ? 1 : 1 - Math.pow(.04, dt);
@@ -559,7 +701,7 @@ function buildPanelVV(w) {
   const dimsOf = m => { const d = M.dims[m]; if (d) { const a = d.din ? `Ø${d.din}/` : ''; const b = /×/.test(d.dout) ? d.dout : (d.din ? d.dout : 'Ø' + d.dout); return `${a}${b}×${d.h}`; }
     const r = VV.RE[m]; return r ? (/^Б\d/.test(m) ? `${r[0]}×${r[2]}, L ${r[1]}` : `${r[0]}×${r[1]}×${r[2]}`) : /^Решётка/.test(m) ? 'рамка 620×620' : ''; };
   const msgs = [S(w, 'msg')].concat(M.warn).filter(x => x && x !== 'ОК');
-  $('#panel').innerHTML = `
+  $('#panelBody').innerHTML = `
     <div class="chips">${chips.join('')}</div>
     <dl class="facts"><dt>Глубина до низа трубы</dt><dd>${fmt(N(w, 'H'))} м</dd><dt>Рабочая часть</dt><dd>${fmt(M.V)} м${M.rect ? ` · стены ${mm(M.t)} мм` : ''}</dd><dt>Горловина с плитой</dt><dd>${fmt(g0.ztop - M.V)} м</dd>
       <dt>Верх люка</dt><dd>${sgn(g0.ztop - M.zg)} м от земли</dd><dt>Самый тяжёлый</dt><dd>${M.heavy ? esc(M.heavy.mark) + ' · ' + fmt(M.heavy.kg / 1000) + ' т' : '—'}</dd><dt>Масса сборных и люков</dt><dd>${fmt(M.total / 1000)} т</dd></dl>
@@ -582,7 +724,7 @@ function buildPanel(w, obj) {
     .concat(M.per ? [`<span class="chip per">перепадный ${fmt(N(w, 'drop'))} м</span>`] : []).concat(M.seis ? [`<span class="chip ms">сейсмика ${esc(S(w, 'seism'))} б.</span>`] : []);
   const ringGroups = []; M.rings.slice().reverse().forEach(r => { const g = ringGroups[ringGroups.length - 1]; if (g && g.mark === r.mark) g.n++; else ringGroups.push({mark: r.mark, n: 1, h: r.z1 - r.z0}); });
   const dimsOf = m => { const d = M.dims[m]; if (!d) return ''; const a = d.din ? `Ø${d.din}/` : ''; const b = /×/.test(d.dout) ? d.dout : (d.din ? d.dout : 'Ø' + d.dout); return `${a}${b}×${d.h}`; };
-  $('#panel').innerHTML = `
+  $('#panelBody').innerHTML = `
     <div class="chips">${chips.join('')}</div>
     <dl class="facts"><dt>Глубина до лотка${M.per ? ' выпуска' : ''}</dt><dd>${fmt(N(w, 'H'))} м</dd><dt>Рабочая часть</dt><dd>${fmt(M.V)} м</dd><dt>Горловина с плитой</dt><dd>${fmt(gW)} м</dd>
       <dt>Верх люка</dt><dd>${sgn(M.ztop - M.zg)} м от земли</dd><dt>Самый тяжёлый</dt><dd>${M.heavy ? esc(M.heavy.mark) + ' · ' + fmt(M.heavy.kg / 1000) + ' т' : '—'}</dd><dt>Масса сборных и люка</dt><dd>${fmt(M.total / 1000)} т</dd></dl>

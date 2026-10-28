@@ -395,11 +395,11 @@ VV.stepsOf = function (M) {
     out.push({els: [M.dE.key], t: `Плита днища ${M.dE.mark}`, fc: kgs(M.dE.mark), kind: 'ДН', todo: ['На раствор 20 мм, строго горизонтально.', `${mm(M.dX * 2)}×${mm(M.dY * 2)}×${mm(M.pnH)}; верх — дно, ${H(0)} м.`], chk: 'Горизонтальность плиты.'});
     const nsk = Math.floor(M.V / .3 + 1e-6);
     out.push({els: ['form', 'skw'], kind: 'FORM', t: 'Стены: опалубка и скобы', fc: `t = ${mm(M.t)} · Hр ${mm(M.V)}${N(w, 'set10') ? ` · сеток ⌀10 — ${N(w, 'set10')}` : ''}${N(w, 'setR') ? ` · С3Вр1 ${fmt(N(w, 'setR'), 0)} кг` : ''}`,
-      todo: [`Опалубка ${mm(ax)}×${mm(by)} в свету.`, `Скобы ⌀18 — в опалубку под лазом: ${nsk} шт.${nG > 1 ? ` ×${nG}` : ''}, через 300.`,
+      todo: [`Опалубка ${mm(ax)}×${mm(by)} в свету.`, `Скобы ⌀18 — сквозь щит под лазом: ${nsk} шт.${nG > 1 ? ` ×${nG}` : ''}, через 300.`,
         `Проёмы под трубы${N(w, 'set10') ? ' + сетки ⌀10' : ''}${N(w, 'setR') ? '; сетка С3Вр1 у граней' : ''}.`],
-      chk: 'Размеры и вертикальность опалубки.'});
+      chk: 'Опалубка вертикальна; скобы — заделка 110–120.'});
     out.push({els: ['wall'], kind: 'СТ', t: 'Стены — бетон М150', fc: `${fmt(N(w, 'v150'))} м³ · монолит`,
-      todo: ['Слоями 0,3–0,5 м, с вибрированием.', `Верх стен — ${H(M.V)} м, горизонтально.`, 'Распалубка — по прочности; снаружи битум.'],
+      todo: ['Из автобетоносмесителя, слоями 0,3–0,5 м, вибрировать.', `Верх стен — ${H(M.V)} м, горизонтально.`, 'Распалубка — по прочности; снаружи битум.'],
       chk: 'Скобы — одной вертикалью.'});
     out.push(pipeStep('стен'));
     if (beams.length) out.push({els: beams.map(b => b.key), t: `Балки Б8${beams.length > 1 ? ' ×' + beams.length : ''}`, fc: kgs('Б8'), kind: 'БЛ',
@@ -555,6 +555,15 @@ VV.buildScene = function (M, THREE) {
     else if (e.kind === 'ДН') shellB(e.x0, e.y0, e.x1, e.y1, e.z0, e.z1, e.key, Lv);
     else if (e.kind === 'СТ') shellB(e.x0, e.y0, e.x1, e.y1, e.z0, e.z1, e.key, Lv);
     else if (e.kind === 'ПЛ') shellB(e.x0, e.y0, e.x1, e.y1, e.z0, e.z1, e.key, Lv);
+  }
+  // опалубка монолитных стен (прямоугольные): щиты снаружи и внутри, стальные ригели снаружи — видна в шагах «опалубка и скобы» и «бетон»
+  if (M.rect && M.wallE) {
+    const e = M.wallE, tf = .028, gp = .002, hz = M.V + .12, Lw = lvl.get(e.key);
+    const fm = mat(C.form, {transparent: true, opacity: 1, roughness: .8}), wm = mat(C.waler, {transparent: true, opacity: 1, metalness: .3, roughness: .5});
+    const frame = (x0, y0, x1, y1, d, z0, h, m, part) => { const sh = rectP(x0 - d, y0 - d, x1 + d, y1 + d); sh.holes.push(rectP(x0, y0, x1, y1, true)); put(ext(sh, h), null, 'form', {pos: [0, 0, z0], lvl: Lw, mat: m, part, edges: true}); };
+    frame(e.x0 - gp, e.y0 - gp, e.x1 + gp, e.y1 + gp, tf, -.02, hz, fm, 'out');
+    frame(e.ix0 + gp + tf, e.iy0 + gp + tf, e.ix1 - gp - tf, e.iy1 - gp - tf, tf, -.02, hz, fm, 'in');
+    for (const z of [.3, M.V / 2, M.V - .25]) frame(e.x0 - gp - tf, e.y0 - gp - tf, e.x1 + gp + tf, e.y1 + gp + tf, .06, z - .045, .09, wm, 'waler');
   }
   buildSurfaceVV(M, THREE, put, ext, C, circ, rectP, (M.rect ? 5 : M.els.length) + 2);
   scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8f94, .62));
