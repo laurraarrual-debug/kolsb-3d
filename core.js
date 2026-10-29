@@ -7,6 +7,10 @@ const KC = G.KC = {};
 /* ---------------- утилиты ---------------- */
 const num = v => typeof v === 'number' ? v : (v !== undefined && v !== null && v !== '' && !isNaN(parseFloat(String(v).replace(',', '.'))) ? parseFloat(String(v).replace(',', '.')) : 0);
 const N = KC.N = (w, k) => num(w[k]);
+KC.num = num;
+// 0.14: строка элемента «марка|код|кол.|кг» — в русском Excel число в тексте с запятой («15,3» у решётки) → num, не «+»;
+// у решётки без массы — масса по её спецификации (15,3 кг)
+KC.rowOf = (i, m, c, q, kg) => { const r = {pos: i + 1, mark: m, code: c, q: num(q), kg: num(kg)}; if (/^Решётка/.test(m) && !(r.kg > 0)) r.kg = 15.3; return r; };
 const S = KC.S = (w, k) => (w[k] === undefined || w[k] === null) ? '' : String(w[k]);
 KC.fmt = (x, d = 2) => (x < -0.0005 ? '−' : '') + Math.abs(x).toFixed(d).replace('.', ',');
 KC.sgn = (x, d = 3) => (x > 0.0005 ? '+' : x < -0.0005 ? '−' : '±') + Math.abs(x).toFixed(d).replace('.', ',');
@@ -57,10 +61,10 @@ KC.model = function (w, angs) {
   // каталог по строке «Элементы»: марка|код|кол|кг (позиции — по порядку)
   M.cat = {}; M.rows = [];
   S(w, 'els').split(';').filter(Boolean).forEach((it, i) => {
-    const [m, c, q, kg] = it.split('|'); const r = {pos: i + 1, mark: m, code: c, q: +q, kg: +kg}; M.rows.push(r); M.cat[m] = r; });
+    const [m, c, q, kg] = it.split('|'); const r = KC.rowOf(i, m, c, q, kg); M.rows.push(r); M.cat[m] = r; });
   M.dims = {};
   // «2500×1750»: через AutoCAD (ANSI-1251) знак × приходит как «?» или «x» - возвращаем ×
-  S(w, 'dims').split(';').filter(Boolean).forEach(it => { const [m, a, b, h] = it.split('|'); M.dims[m] = {din: a, dout: String(b || '').replace(/(\d)\s*[x×х?]\s*(\d)/gi, '$1×$2'), h: +h}; });
+  S(w, 'dims').split(';').filter(Boolean).forEach(it => { const [m, a, b, h] = it.split('|'); M.dims[m] = {din: a, dout: String(b || '').replace(/(\d)\s*[x×х?]\s*(\d)/gi, '$1×$2'), h: num(h)}; });
   const pos = m => (M.cat[m] || {}).pos || '';
   const els = []; let z = 0;
   const addE = o => { o.id = els.length; o.key = 'e' + o.id; o.pos = pos(o.mark); els.push(o); return o; };
@@ -577,7 +581,7 @@ KC.unpack = async function (s) {
 KC.COL = {ring: 0xc9c5bb, ring2: 0xbfbbb0, plate: 0xaaa69c, gorl: 0xd5cfc2, ko: 0xe0dacc, lot: 0xbdb8ad, chan: 0x7f95a4, pipe: 0xd0712f, pipeIn: 0x9c4f1d,
   iron: 0x34383d, lid: 0x4e555c, step: 0xd9a21b, wall: 0x8d77bd, steel: 0x4a5560, ms: 0x2f6f9f, hi: 0xf2a516, coat: 0x50555b, tape: 0x16181b, cap: 0xe9e4d8,
   grass: 0x76a650, soil: 0x9a7b5a, lean: 0xb0aca2, mortar: 0xc9c1b0, clay: 0x8f6a4a, comp: 0xa48a6c, asph: 0x3f4348, gravel: 0x9d978c, tile: 0xb8b1a5, sand: 0xd9c9a3, edge: 0x4a4a4a,
-  form: 0xc58c55, waler: 0xe2ad1c, fresh: 0x8c8c86, nab: 0xb4ab98, ugv: 0x3d8fd6, sleeve: 0x6f7a84, seal: 0x2b2b2b,
+  form: 0xc58c55, waler: 0xe2ad1c, fresh: 0x8c8c86, nab: 0xb4ab98, ugv: 0x3d8fd6, sleeve: 0x7d878f, sleeveIn: 0x4a5056, sleeveEnd: 0xa3abb2, seal: 0x2f2c29,
   pe: 0x1f2226, peIn: 0x0d0e10, corrIn: 0xe9e4d9, rebar: 0x8a4b2d, beam: 0xa88a70, mono: 0xb9b3a7};   // 0.10: ПЭ (В1), внутренний слой гофры (К1), арматура
 KC.buildScene = function (M, THREE) {
   const C = KC.COL, scene = new THREE.Scene(), meshes = [], mats = new Map(), xmats = [];
@@ -743,7 +747,9 @@ KC.buildScene = function (M, THREE) {
   });
   // основание
   // 0.12: уплотнённый грунт — свой ключ baseC (свой шаг, на общих видах не показывается)
-  for (const b of M.base) put(new THREE.CylinderGeometry(b.r, b.r, b.z1 - b.z0, 96).rotateX(Math.PI / 2).translate(0, 0, (b.z0 + b.z1) / 2), C[b.col], b.cls === 'comp' ? 'baseC' : 'base', {lvl: -1, edges: b.cls !== 'bitl', part: b.cls});
+  // 0.14: верх каждого слоя основания — на 2 мм ниже низа того, что на нём лежит: без совпадающих граней (в разрезе на телефоне
+  // совпадающие низ плиты днища и верх подготовки давали «лучи» — z-fighting)
+  for (const b of M.base) put(new THREE.CylinderGeometry(b.r, b.r, b.z1 - b.z0 - .002, 96).rotateX(Math.PI / 2).translate(0, 0, (b.z0 + b.z1 - .002) / 2), C[b.col], b.cls === 'comp' ? 'baseC' : 'base', {lvl: -1, edges: b.cls !== 'bitl', part: b.cls});
   if (M.zamok) put(ringGeo(M.zamok.rin + .003, M.zamok.rout, M.zamok.z1 - M.zamok.z0), C.clay, 'zamok', {pos: [0, 0, M.zamok.z0], lvl: -1, edges: true});   // 0.12: свой шаг — после труб
   // уровень грунтовых вод: полупрозрачная гладь вокруг колодца (только в обзоре)
   if (M.wetV) {
@@ -894,7 +900,7 @@ KC.labelAnchors = function (M, right2) {
   for (const e of M.els) {
     const r = e.kind === 'ПД' ? 1.0 : e.rout;
     const hmm = M.dims[e.mark] ? M.dims[e.mark].h : Math.round((e.z1 - e.z0) * 1000);
-    out.push({key: e.key, p: [e.cx + rx * r, e.cy + ry * r, (e.z0 + e.z1) / 2], text: `${e.pos ? e.pos + '  ' : ''}${e.kind === 'РШ' ? 'Решётка' : e.mark}${e.q > 1 ? ' ×' + e.q : ''}`, sub: e.kind === 'ЛЮК' ? `h ${Math.round(M.Hl * 1000)}` : e.kind === 'РШ' ? 'защитная, 620×620' : `h ${hmm}${e.q > 1 ? ' ×' + e.q : ''}`, lvlKey: e.key});
+    out.push({key: e.key, p: [e.cx + rx * r, e.cy + ry * r, (e.z0 + e.z1) / 2], text: `${e.pos ? e.pos + '. ' : ''}${e.kind === 'РШ' ? 'Решётка' : e.mark}${e.q > 1 ? ' ×' + e.q : ''}`, sub: e.kind === 'ЛЮК' ? `h ${Math.round(M.Hl * 1000)}` : e.kind === 'РШ' ? 'защитная\n620×620' : `h ${hmm}${e.q > 1 ? ' ×' + e.q : ''}`, lvlKey: e.key});
   }
   return out;
 };

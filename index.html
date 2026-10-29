@@ -181,7 +181,7 @@ function initGL() {
   controls = new THREE.OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.dampingFactor = .12; controls.addEventListener('change', () => { needs = true; });
   resetView(); applyState();
   const lab = $('#labels'); lab.innerHTML = '';
-  if (isVV()) lblEls = VV.labelAnchors(M, [1, 0]).map(a => { const d = document.createElement('div'); d.className = 'lbl'; d.innerHTML = `${esc(a.text.replace(/^\d+\s+/, ''))}<small>${esc(a.sub)}${a.nomm ? '' : ' мм'}</small>`; lab.appendChild(d); return {e: M.els.find(x => x.key === a.key), d, key: a.key}; });
+  if (isVV()) lblEls = VV.labelAnchors(M, [1, 0]).map(a => { const d = document.createElement('div'); d.className = 'lbl'; d.innerHTML = `${esc(a.text.replace(/^\d+\.?\s+/, ''))}<small>${esc(String(a.sub).replace(/\n/g, ', '))}${a.nomm ? '' : ' мм'}</small>`; lab.appendChild(d); return {e: M.els.find(x => x.key === a.key), d, key: a.key}; });
   else lblEls = M.els.map(e => { const d = document.createElement('div'); d.className = 'lbl'; const h = e.kind === 'ЛЮК' ? Math.round(M.Hl * 1000) : (M.dims[e.mark] ? M.dims[e.mark].h : Math.round((e.z1 - e.z0) * 1000));
     d.innerHTML = e.kind === 'РШ' ? `${esc(e.mark)}<small>рамка 620×620, ${KC.fmt(M.cat[e.mark] ? M.cat[e.mark].kg : KC.GRATE.kg, 1)} кг</small>` : `${esc(e.mark)}${e.q > 1 ? ' ×' + e.q : ''}<small>h ${h}${e.q > 1 ? ' ×' + e.q : ''} мм</small>`; lab.appendChild(d); return {e, d}; });
   // выноски гидроизоляции — слева от колодца
@@ -492,7 +492,7 @@ function animPlanVV(i) {
   const many = elK.length > 2; let land = t;
   elK.forEach((k, n) => {
     const e = M.els.find(x => x.key === k), body = SC.meshes.filter(m => m.userData.key === k || (m.userData.key === 'coat' && m.userData.of === k));
-    if (e.kind === 'НБ') { T.push({type: 'grow', ms: body, pivot: e.z0, t0: t, d: 1.4, hide: true}); land = t + 1.4; t = many ? t + .5 : land; return; }
+    if (e.kind === 'НБ' || e.kind === 'ЗМ') { T.push({type: 'grow', ms: body, pivot: e.z0, t0: t, d: 1.4, hide: true}); land = t + 1.4; t = many ? t + .5 : land; return; }   // 0.14: замок стыка с днищем — бетонируется
     if (e.kind === 'КО') { const g = new Map(); for (const m of body) { const j = Math.max(0, Math.round((zMinOf(m) - e.z0) / .08)); if (!g.has(j)) g.set(j, []); g.get(j).push(m); }
       [...g.keys()].sort((a, b) => a - b).forEach((j, q) => T.push({type: 'drop', ms: g.get(j), dz: .55, t0: t + q * .4, d: .5, hide: true})); land = t + (g.size - 1) * .4 + .5; t = many ? t + .5 : land; return; }
     if (e.kind === 'ЛЮК') { T.push({type: 'drop', ms: body, dz: .7, t0: t, d: .9, hide: true}); land = t + .9; t = many ? t + .5 : land; return; }
@@ -769,6 +769,9 @@ function buildPanelVV(w) {
       <dt>Верх люка</dt><dd>${sgn(g0.ztop - M.zg)} м от земли</dd><dt>Самый тяжёлый</dt><dd>${M.heavy ? esc(M.heavy.mark) + ' · ' + fmt(M.heavy.kg / 1000) + ' т' : '—'}</dd><dt>Масса сборных и люков</dt><dd>${fmt(M.total / 1000)} т</dd></dl>
     <div><h2>Элементы</h2><table><thead><tr><th>Марка</th><th>Размеры, мм</th><th class="r">Шт.</th><th class="r">кг</th></tr></thead><tbody>
       ${M.rows.map(r => `<tr><td>${esc(r.mark)}</td><td>${esc(dimsOf(r.mark))}</td><td class="r">${r.q}</td><td class="r">${Math.round(r.q * r.kg)}</td></tr>`).join('')}</tbody></table></div>
+    ${M.seis ? `<div><h2>Сейсмика: МС</h2><table><tbody>${[['ring', 'Швы колец'], ['pp', 'Кольцо — плита'], ['p10', 'Плита — КС10'], ['g10', 'Швы КС10'], ['p10t', 'КС10 — ПП10'], ['ppg', 'Плита — горловина'], ['gorl', 'Швы горловины'], ['gko', 'КС7 — КО6']].map(([k, t]) => { const l = M.seams.filter(s => s.kind === k); return l.length ? `<tr><td>${t}</td><td class="r">${l[0].mark} × ${l[0].n}${l.length > 1 ? ` × ${l.length} шв.` : ''}</td></tr>` : ''; }).join('')}
+      ${M.zamE ? `<tr><td>Стык с днищем</td><td class="r">без МС: замок из бетона В12,5 · галтель ${mm(M.zamE.z1 - M.zamE.z0)}×${mm(M.zamE.rout - M.zamE.rin)} · ${fmt(M.zamE.vol, 3)} м³</td></tr>` : ''}${N(w, 'setR') ? `<tr><td>Сетка в стенах</td><td class="r">С3Вр1-150 · ${fmt(N(w, 'setR'))} кг</td></tr>` : ''}</tbody></table>
+      <div class="note">ТПР 901-09-11.84, Альбом VI.88 (АС-3, АС-5): МС-1…4 — Н-образные, МС-5…8 — h-образные.</div></div>` : ''}
     ${M.rect ? `<div><h2>Перекрытие ${esc(M.pk)}</h2><table><tbody><tr><td>Плит</td><td class="r">${M.plates.length}${M.beams.length ? ` · балок Б8 ${M.beams.length}` : ''}</td></tr>
       <tr><td>Раскладка</td><td class="r">по плану Альбома IV (АС-8…12)</td></tr>${M.lay.type === 'S' ? `<tr><td>Ширины плит / длина камеры</td><td class="r">${mm(M.lay.sum)} / ${N(w, 'A')} мм</td></tr>` : ''}</tbody></table></div>` : ''}
     <div><h2>Основание и гидроизоляция</h2><table><tbody>
