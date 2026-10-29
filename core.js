@@ -117,7 +117,11 @@ KC.water = function (M) {
   const w = M.w, u = S(w, 'ugv').trim();
   M.gtype = S(w, 'gtype') || 'обмазочная'; M.okl = M.gtype === 'оклеечная';
   M.ugv = u !== '' && !isNaN(parseFloat(u.replace(',', '.'))) ? N(w, 'ugv') : null;
-  M.zU = M.ugv !== null ? M.zg - M.ugv : null;              // уровень воды (z от дна)
+  M.zU = M.ugv !== null ? M.zg - M.ugv : null;              // уровень воды (z от дна) — расчётный (максимальный ожидаемый)
+  // 0.13: установившийся УГВ (лист «Условия»): на разрезах — две линии, синяя (установившийся) и magenta (максимальный ожидаемый)
+  { const u0 = S(w, 'ugv0').trim(); M.ugv0 = u0 !== '' && !isNaN(parseFloat(u0.replace(',', '.'))) ? N(w, 'ugv0') : null; }
+  M.zU0 = M.ugv0 !== null ? M.zg - M.ugv0 : null;
+  M.ugv2 = M.ugv !== null && M.ugv0 !== null && M.ugv0 > M.ugv + .005;   // две разные линии УГВ
   M.wetV = M.zU !== null && M.zU > M.zBase + .005;           // вода выше низа основания — показываем в 3D
   M.zOkl = M.zU !== null ? Math.min(M.ztop - .1, M.zU + .5) : null;   // оклеечная — на 0,5 м выше уровня воды
   M.beton = [S(w, 'cem'), N(w, 'Wb') ? 'W' + N(w, 'Wb') : '', S(w, 'Fb')].filter(Boolean).join(', ');
@@ -156,18 +160,27 @@ KC.coatSpans = function (M, z0, z1) {
   return out;
 };
 KC.coated = (M, z0, z1) => KC.coatSpans(M, z0, z1).length > 0;
+// 0.13: линии УГВ на разрезе [z, подпись, класс линии, класс текста]: при двух уровнях — синий (установившийся) и magenta (максимальный
+// ожидаемый, по нему гидроизоляция); при одном — синий «УГВ». Только выше низа основания и не выше земли
+KC.ugvName = M => M.ugv2 ? 'УГВ макс.' : 'УГВ';   // 0.13: при двух уровнях гидроизоляция — по максимальному ожидаемому
+KC.ugvLines = function (M) {
+  const ok = z => z !== null && z > M.zBase + .005 && z <= M.zg + 1e-6, out = [];
+  if (M.ugv2) { if (ok(M.zU0)) out.push([M.zU0, 'УГВ уст.', 'ugvl', 'ugvb']); if (ok(M.zU)) out.push([M.zU, 'УГВ макс.', 'ugvm', 'ugvp']); }
+  else if (ok(M.zU)) out.push([M.zU, 'УГВ', 'ugvl', 'ugvb']);
+  return out;
+};
 // тексты о гидроизоляции для паспорта и актов: что, где и почему (одинаково для К1 и В1)
 KC.gzWhy = function (M) {
   const w = M.w, H = z => sgn(z - M.zg), u = M.ugv;
   if (M.gzOld) return {zone: '', why: ''};
   if (M.gfull && !M.okl) return {zone: 'по всей наружной поверхности', dry: ''};   // 0.12: «полностью»
   const parts = [];
-  if (M.okl) parts.push(`вода выше низа перекрытия (УГВ ${fmt(u)} м)`);
+  if (M.okl) parts.push(`вода выше низа перекрытия (${KC.ugvName(M)} ${fmt(u)} м)`);
   else {
-    if (M.gzWet) parts.push(`в зоне воды — до ${H(M.zW)} м (УГВ ${fmt(u)} м + ${fmt(M.gzap, 1)})`);
+    if (M.gzWet) parts.push(`в зоне воды — до ${H(M.zW)} м (${KC.ugvName(M)} ${fmt(u)} м + ${fmt(M.gzap, 1)})`);
     if (M.fz > 0) parts.push(`в зоне промерзания — до ${fmt(M.fz)} м от земли (пучинистые грунты)`);
   }
-  const dry = !M.gzAny ? (S(w, 'ugv').trim() === '' ? 'воды нет (УГВ не задан или «не вскрыты»)' : `УГВ ${fmt(u)} м — ниже низа колодца`) : '';
+  const dry = !M.gzAny ? (S(w, 'ugv').trim() === '' ? 'воды нет (УГВ не задан или «не вскрыты»)' : `${KC.ugvName(M)} ${fmt(u)} м — ниже низа колодца`) : '';
   return {zone: parts.join('; '), dry};
 };
 // скобы ходовые — в отверстиях стеновых колец (серия 3.900.1-14, п. 2.5, 4.9): ставятся вместе с кольцом, в котором стоят
@@ -533,7 +546,8 @@ KC.PACK_KEYS = ['nom', 'per', 'mark', 'H', 'D', 'Du', 'drop', 'mesto', 'hatch', 
   'pn', 'ring9', 'ring6', 'n9', 'n6', 'pp', 'n76', 'n73', 'nKO', 'sk', 'zad', 'lot', 'gidro', 'Dout', 'pnD', 'pnH', 'h9', 'h6', 'Hst', 'zin', 'wall', 'els', 'dims', 'seism', 'msk', 'msg', 'grunt', 'lenta', 'gin', 'gout', 'gpn', 'lentaW', 'lentaN', 'bitron',
   'nabH', 'nabJ', 'nabV', 'gtype', 'ugv', 'v50k',   // 0.9: набетонка, вода (в конец — старые QR читаются как раньше; gtype — 1/0/2)
   'wet', 'zw', 'fz', 'pII', 'jrW', 'jgW', 'gzap', 'kzh',   // 0.11: гидроизоляция по грунтам (у старых QR этих полей нет — «как раньше»)
-  'gfull'];   // 0.12: «Условия» — гидроизоляция «полностью» (у QR 0.11 поля нет — по ТПР)
+  'gfull',   // 0.12: «Условия» — гидроизоляция «полностью» (у QR 0.11 поля нет — по ТПР)
+  'ugv0'];   // 0.13: установившийся УГВ (у старых QR нет — одна линия УГВ)
 const b64u = {
   enc: u8 => { let s = ''; for (let i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); },
   dec: s => { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }

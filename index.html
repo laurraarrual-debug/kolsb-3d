@@ -39,6 +39,8 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:14px/1
 .inui[hidden]{display:none}
 .inui .hint{font-size:13px;line-height:1.3}
 .inui .nav{display:flex;gap:6px;flex:none}
+.inui .vp{display:flex;gap:6px;flex:none}.inui .vp[hidden]{display:none}
+@media (max-width:560px){.inui{flex-wrap:wrap}.inui .hint{flex:1 1 100%}}
 .stepcard .n{font:800 22px var(--f);color:var(--accent);min-width:1.6em;text-align:center}
 .stepcard b{display:block;font-size:15.5px;line-height:1.2}
 .stepcard .fc{font-size:12px;color:var(--muted)}
@@ -108,6 +110,7 @@ tr.sum td{font-weight:700;background:var(--surface-2)} tr.sum td.ok{color:var(--
       <div class="nav"><button class="btn main" id="next" aria-label="Следующий шаг">▶</button><button class="btn" id="prev" aria-label="Предыдущий шаг">◀</button></div>
     </div>
     <div class="inui" id="inui" hidden><div class="hint" id="inHint"></div>
+      <div class="vp" id="inVp" hidden><button class="btn" id="vpH" aria-pressed="true">Люк</button><button class="btn" id="vpC" aria-pressed="false">Углы</button><button class="btn" id="vpT" aria-pressed="false">Сверху</button></div>
       <div class="nav"><button class="btn" id="inUp" aria-label="Выше по скобам">▲</button><button class="btn" id="inDn" aria-label="Ниже по скобам">▼</button></div></div>
     <div class="tools">
       <button class="btn main" id="bPlay">▶ Сборка</button>
@@ -115,6 +118,7 @@ tr.sum td{font-weight:700;background:var(--surface-2)} tr.sum td.ok{color:var(--
       <button class="btn" id="bCut" aria-pressed="false">Разрез</button>
       <button class="btn" id="bExp" aria-pressed="false">Разобрать</button>
       <button class="btn" id="bCoat" aria-pressed="false">Гидроизоляция</button>
+      <button class="btn" id="bSurf" aria-pressed="false">Покрытие</button>
       <button class="btn" id="bIn" aria-pressed="false">Изнутри</button>
       <button class="btn" id="bLbl" aria-pressed="true">Подписи</button>
       <button class="btn" id="bReset">Вид</button>
@@ -135,10 +139,10 @@ tr.sum td{font-weight:700;background:var(--surface-2)} tr.sum td.ok{color:var(--
 <script src="corevv.js"></script>
 <script>
 "use strict";
-const DEMO = 'k1TZFBblQxDIavMvL6r2Unz3nJzAl6hqoLJPbs2BCkalbAAoS6K6ID5QKPxajViPYMzo1QXvumo0iR_Tvx_yX-QO9praA3tL4QaJZL0Dtak-_alT_4P9-3q5U_-d_2xfd-aFufCPSW1hekBAH5jf_2P2dKGFgilA1RZK5cE8jv-nbtk9_7kz8ShDVAWAwC4QHS72VEjhDOEdblNPZzBvKd_1SjZxs1Lq9hIkQoSH3nO7Wz0HG0a3P_1NsYQuI8QjllhMU7FwhbwUxJi0nVWkw2i1GNVUWOeapaU5LN0a3nWTb-y_ftU_vetn7waeX3PrXP_tC2_uhT-1a1qnGcu4wcexrnnrepxtrtfrSvflj5XS9peqWpQUSqhhMita6kLDWXU7CjbOUUcFxkfXlWB-hiHqSGsmBYflZGIRRkkN_6DYHOzwkauChUOQ5QY4sYOId5bmEetbys0GOOGdq_GYI4j9cglx__Aw';
+const DEMO = 'k1TZFNTiQxDIWvgrx-WHZSTiXdJ-AMiAUSe3ZsJiMhVjMbEGIHgubnAr1BIARzBudGo1RTTStSFD87fl_iX3RGCwUd0-JQoFmOQKe0IF-1c3_3T39t5wQ6ocUhKUFAfutP_rKvhIElQtkQRabMDYH8uW83vvY3_-dfBGENEBaDQHiA9HsZkSOEc4R1OY29zkC-8ns12tiocfk5JkKEgtRXvlLbDx1Huzb1T72NISTOI5RTRpi9c4GwFUyUNJtUrcVkORvVWFVkG6eqNSVZbt16nGXpj_7a_rTrduEfvt7zN1-3v_7eLvzL1-2qalXjOHUZOfYwTj0fUo212921S__Y8-ee0vRDU4OIVA07RGpdSVlqLrtgW9nKLuA4y_r9rA7QxTxIDWXGsLxRRiEUZJA_-C2BDg4IGrgoVDkOUGOLGDiHaW5hGrV8r9DPHDO0fzMEcRrvpiCyHf3-Dw';
 const $ = s => document.querySelector(s);
 const {fmt, sgn, esc, N, S} = KC;
-let coatLbl = [], ugvLbl = null, elKeys = new Set(), stepExp = false, inside = null, showCoat = false, M, SC, renderer, camera, controls, steps, stepIdx = -1, cut = false, expT = 0, expTarget = 0, showLbl = true, lblEls = [], needs = true;
+let coatLbl = [], ugvLbl = null, elKeys = new Set(), stepExp = false, inside = null, showCoat = false, showSurf = false, M, SC, renderer, camera, controls, steps, stepIdx = -1, cut = false, expT = 0, expTarget = 0, showLbl = true, lblEls = [], needs = true;
 
 function theme() { try { const t = localStorage.getItem('kolsb-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {} }
 theme();
@@ -183,7 +187,7 @@ function initGL() {
   // выноски гидроизоляции — слева от колодца
   coatLbl = [['tape', 'ЛЕНТА', 'гидроизол, 2 слоя'], ['coat', M.okl ? 'ОКЛЕЕЧНАЯ' : 'БИТУМ', M.okl ? 'гидроизол 2–3 слоя' : M.gzAll || !M.gzOut ? 'горячий, 5 мм' : M.gzWet ? 'до зоны воды' : 'зона промерзания']].map(([k, t, sm]) => { const d = document.createElement('div'); d.className = 'lbl l' + (k === 'tape' ? ' tp' : ''); d.innerHTML = `${t}<small>${sm}</small>`; lab.appendChild(d); return {k, d}; });
   // подпись уровня грунтовых вод — у края водной глади
-  ugvLbl = M.wetV ? (() => { const d = document.createElement('div'); d.className = 'lbl ugv'; d.innerHTML = `УГВ<small>−${KC.fmt(M.ugv)} м от земли</small>`; lab.appendChild(d); return d; })() : null;
+  ugvLbl = M.wetV ? (() => { const d = document.createElement('div'); d.className = 'lbl ugv'; d.innerHTML = M.ugv2 ? `УГВ макс.<small>−${KC.fmt(M.ugv)} м · уст. −${KC.fmt(M.ugv0)} м</small>` : `УГВ<small>−${KC.fmt(M.ugv)} м от земли</small>`; lab.appendChild(d); return d; })() : null;
   addEventListener('resize', () => { needs = true; });
   requestAnimationFrame(loop);
 }
@@ -227,12 +231,13 @@ function applyState() {
     if (k === 'ugv') v = (!st || st.fin) && expTarget === 0 && !inside;   // уровень грунтовых вод — в обзоре
     if ((k === 'zamok' || k === 'baseC') && (done ? !cur.has(k) : !cut)) v = false;   // 0.12: замок и уплотнённый грунт — в своём шаге и в разрезе обзора
     if (k === 'surf' && showCoat && !done) v = false;   // гидроизоляция: покрытие у люка убираем, чтобы была видна горловина
+    if (k === 'surf' && !showSurf && !inside && !(cur && cur.has('surf'))) v = false;   // 0.13: покрытие (газон, тротуар, дорога) — по кнопке, сначала выключено: закрывало обзор; в шаге «Люк» — видно
     if (k === 'grOpen') v = !!inside && (!done || done.has(ud.of));   // откинутая на петлях решётка — только в виде изнутри
     if (inside && (ud.part === 'lid' || ud.part === 'grate' || k === 'coat' || k === 'tape')) v = false;   // изнутри: крышка люка открыта, решётка откинута — сверху небо
     m.visible = !!v;
     if (m.isMesh && !ud.line) m.material = (st && !st.nohi && !/^ms\d/.test(k) && (cur.has(k) || (k === 'coat' && ud.of && cur.has(ud.of)))) ? SC.hiMat : ud.base;   // МС — своим цветом, иначе сливаются с выделенным кольцом
   }
-  $('#bCut').setAttribute('aria-pressed', cut); $('#bExp').setAttribute('aria-pressed', expTarget > 0); $('#bLbl').setAttribute('aria-pressed', showLbl); $('#bSteps').setAttribute('aria-pressed', stepIdx >= 0); $('#bCoat').setAttribute('aria-pressed', showCoat); $('#bIn').setAttribute('aria-pressed', !!inside); $('#inui').hidden = !inside; if (inside) $('#inHint').textContent = inHint();
+  $('#bCut').setAttribute('aria-pressed', cut); $('#bExp').setAttribute('aria-pressed', expTarget > 0); $('#bLbl').setAttribute('aria-pressed', showLbl); $('#bSteps').setAttribute('aria-pressed', stepIdx >= 0); $('#bCoat').setAttribute('aria-pressed', showCoat); $('#bSurf').setAttribute('aria-pressed', showSurf); $('#bIn').setAttribute('aria-pressed', !!inside); $('#inui').hidden = !inside; if (inside) $('#inHint').textContent = inHint();
   const card = $('#card'); card.hidden = !st;
   if (st) { $('#cn').textContent = stepIdx + 1; $('#ct').textContent = st.t; $('#cf').textContent = `${st.fc ? st.fc + ' · ' : ''}шаг ${stepIdx + 1} из ${steps.length}`;
     $('#cu').innerHTML = st.todo.map(t => `<li>${esc(t)}</li>`).join(''); $('#cc').textContent = st.chk ? '✓ ' + st.chk : ''; }
@@ -281,14 +286,22 @@ function loop(now) {
   const iu = $('#inui'); if (!iu.hidden) iu.style.bottom = ($('.tools').offsetHeight + 16) + 'px';
 }
 /* ---------- вид изнутри: стоим на полке лотка, осматриваемся; ▲▼ — по скобам, вплоть до люка ---------- */
-const inPos = z => { if (isVV()) { const g = M.hatches[0], [x, y] = VV.toW(M, g.x - .22 * Math.cos(g.ga), g.y - .22 * Math.sin(g.ga)); return new THREE.Vector3(x, y, z); } return new THREE.Vector3(M.gx * .75, M.gy * .75, z); };   // под лазом: из рабочей части прямо в горловину
-const gW = () => { const g = M.hatches ? M.hatches[0] : null; return g && isVV() ? VV.toW(M, g.x, g.y) : [M.gx, M.gy]; };
-const inLim = () => [M.hb + .35, M.ztop + .3];
+// 0.13: точки обзора изнутри — под люком (у прямоугольных — под каждым), в каждом углу камеры и в центре под перекрытием
+const vpXY = vp => {
+  if (!vp || vp.k === 'h') { if (isVV()) { const g = M.hatches[vp ? vp.i : 0] || M.hatches[0]; return VV.toW(M, g.x - .22 * Math.cos(g.ga), g.y - .22 * Math.sin(g.ga)); } return [M.gx * .75, M.gy * .75]; }   // под лазом: из рабочей части прямо в горловину
+  const sg = [[-1, -1], [1, -1], [1, 1], [-1, 1]][vp.i || 0], ax = M.A / 2 - .45, by = M.B / 2 - .45;
+  return vp.k === 'c' ? VV.toW(M, sg[0] * ax, sg[1] * by) : VV.toW(M, 0, 0); };
+const inPos = z => { const [x, y] = vpXY(inside && inside.vp); return new THREE.Vector3(x, y, z); };
+const gW = (i = 0) => { const g = M.hatches ? M.hatches[i] || M.hatches[0] : null; return g && isVV() ? VV.toW(M, g.x, g.y) : [M.gx, M.gy]; };
+const inLim = () => inside && inside.vp && inside.vp.k !== 'h' ? [M.hb + .35, M.V - .15] : [M.hb + .35, M.ztop + .3];
 function inHint() {
   if (!inside) return '';
+  const vp = inside.vp || {k: 'h', i: 0}, nG = M.hatches ? M.hatches.length : 1;
+  if (vp.k === 'c') return `Угол ${vp.i + 1} из 4: камера, дно и трубы. Потяните, чтобы осмотреться; «Углы» — следующий угол, ▲▼ — выше, ниже.`;
+  if (vp.k === 't') return 'Центр, под перекрытием: камера сверху. Потяните, чтобы осмотреться; ▲▼ — выше, ниже.';
   if (inside.z > M.ztop) return 'Выглянули из люка — оглянитесь вокруг. ▼ — обратно в колодец.';
   if (inside.z > M.V + M.hpp) return 'Горловина: кольца, швы, скобы. ▲ — к открытому люку, ▼ — вниз.';
-  return `Вы внутри колодца, над головой — открытый люк. Потяните, чтобы осмотреться: внизу ${isVV() ? 'трубы' : 'лоток и трубы'}. ▲▼ — по скобам.`;
+  return `Вы внутри колодца, над головой — открытый люк${nG > 1 ? ` ${vp.i + 1}` : ''}. Потяните, чтобы осмотреться: внизу ${isVV() ? 'трубы' : 'лоток и трубы'}. ▲▼ — по скобам.`;
 }
 function setFog(f) {   // туман меняет шейдеры — пересобрать материалы
   if (SC.scene.fog === f) return; SC.scene.fog = f;
@@ -299,12 +312,12 @@ function setInside(on) {
   if (on && !inside) {
     stepIdx = -1; cut = false; expTarget = 0; expT = 0; KC.explode(SC, 0); showCoat = false;
     const z = Math.max(inLim()[0], Math.min(M.hb + 1.3, M.V - .45));   // стоим на полке лотка; в мелком колодце — пригнувшись
-    inside = {pos: camera.position.clone(), target: controls.target.clone(), fov: camera.fov, near: camera.near, z, light: []};
-    // внутри темнее: фонарик у глаз и дневной свет из открытого люка
-    for (const o of SC.scene.children) if (o.isLight) { inside.light.push([o, o.intensity]); o.intensity *= o.isHemisphereLight ? .3 : .12; }
-    inside.head = new THREE.PointLight(0xfff0d6, 1.25, 6, 2); camera.add(inside.head); SC.scene.add(camera);   // фонарик: ближе — светлее, дальше — темнее
-    inside.sky = new THREE.PointLight(0xe3f0ff, 1.1, 5, 2); inside.sky.position.set(...gW(), M.ztop + .5); SC.scene.add(inside.sky);
-    inside.fog = new THREE.Fog(0x15181c, 1.2, 6.5);
+    inside = {pos: camera.position.clone(), target: controls.target.clone(), fov: camera.fov, near: camera.near, z, light: [], vp: {k: 'h', i: 0}};
+    // 0.13: внутри — светло (был полумрак): общий свет почти как снаружи, ровный «фонарик» у глаз без затухания, дневной свет из каждого люка
+    for (const o of SC.scene.children) if (o.isLight) { inside.light.push([o, o.intensity]); o.intensity *= o.isHemisphereLight ? .95 : .5; }
+    inside.head = new THREE.PointLight(0xfff6e8, .5, 0); camera.add(inside.head); SC.scene.add(camera);
+    inside.sky = (M.hatches || [null]).map((g, i) => { const l = new THREE.PointLight(0xe3f0ff, .7, 9, 1); l.position.set(...gW(i), M.ztop + .5); SC.scene.add(l); return l; });
+    inside.fog = null;
     // площадка вокруг до горизонта — чтобы, выглянув из люка, видеть землю, а не пустоту
     inside.ground = new THREE.Mesh(new THREE.RingGeometry(Math.max(.5, M.surfR - .01), 45, 96), new THREE.MeshStandardMaterial({color: 0x8d9a6c, roughness: 1, side: THREE.DoubleSide}));
     { const c = isVV() ? VV.toW(M, 0, 0) : [M.gx, M.gy]; inside.ground.position.set(c[0], c[1], M.zg - .012); } SC.scene.add(inside.ground);
@@ -314,16 +327,36 @@ function setInside(on) {
     // первый взгляд — вверх, на открытый люк и небо; чуть в сторону дальней стенки, чтобы видеть ствол колодца
     const [gx, gy] = gW(), p = inPos(z), d = new THREE.Vector3(gx - p.x - Math.cos(M.go) * .45, gy - p.y - Math.sin(M.go) * .45, M.ztop - z).normalize();
     camera.position.copy(p); controls.target.copy(p.clone().add(d.multiplyScalar(.05))); controls.update();
-    setFog(inside.fog);
+    setFog(inside.fog); vpUi();
   } else if (!on && inside) {
     for (const [o, i] of inside.light) o.intensity = i;
     setFog(null);
-    camera.remove(inside.head); SC.scene.remove(camera); SC.scene.remove(inside.sky); SC.scene.remove(inside.ground); inside.ground.geometry.dispose(); inside.ground.material.dispose();
+    camera.remove(inside.head); SC.scene.remove(camera); inside.sky.forEach(l => SC.scene.remove(l)); SC.scene.remove(inside.ground); inside.ground.geometry.dispose(); inside.ground.material.dispose();
     camera.fov = inside.fov; camera.near = inside.near; camera.updateProjectionMatrix();
     controls.enableZoom = true; controls.enablePan = true; controls.rotateSpeed = 1;
-    inside = null; setBg(); resetView();
+    inside = null; setBg(); resetView(); $('#inVp').hidden = true;
   }
   applyState();
+}
+function setVp(vp) {
+  if (!inside) return;
+  inside.vp = vp;
+  const [a, b] = inLim(), z = vp.k === 't' ? Math.max(a, b - .15) : vp.k === 'c' ? Math.max(a, Math.min(b, M.hb + 1.5)) : Math.max(a, Math.min(b, Math.min(inside.z, M.V - .45)));
+  inside.z = z; const p = inPos(z); camera.position.copy(p);
+  let d;
+  if (vp.k === 'c') { const [ox, oy] = VV.toW(M, 0, 0); d = new THREE.Vector3(ox - p.x, oy - p.y, M.hb + .45 - z); }   // из угла — на центр камеры, чуть вниз
+  else if (vp.k === 't') { const [ox, oy] = VV.toW(M, .4, .12); d = new THREE.Vector3(ox - p.x, oy - p.y, M.hb - z); }   // сверху вниз (чуть наклонно: строго вниз камера вырождается)
+  else { const [gx, gy] = gW(vp.i); d = new THREE.Vector3(gx - p.x - Math.cos(M.go) * .45, gy - p.y - Math.sin(M.go) * .45, M.ztop - z); }   // под люком — вверх, на открытый люк
+  controls.target.copy(p.clone().add(d.normalize().multiplyScalar(.05))); controls.update();
+  setFog(z < M.zg ? inside.fog : null); vpUi(); needs = true;
+}
+function vpUi() {
+  const rect = isVV() && M.rect, vp = inside && inside.vp; $('#inVp').hidden = !rect || !inside;
+  if (!rect || !vp) return;
+  const nG = M.hatches.length;
+  $('#vpH').textContent = nG > 1 && vp.k === 'h' ? `Люк ${vp.i + 1}` : 'Люк'; $('#vpC').textContent = vp.k === 'c' ? `Угол ${vp.i + 1}` : 'Углы';
+  $('#vpH').setAttribute('aria-pressed', vp.k === 'h'); $('#vpC').setAttribute('aria-pressed', vp.k === 'c'); $('#vpT').setAttribute('aria-pressed', vp.k === 't');
+  $('#inHint').textContent = inHint();
 }
 function inMove(dz) {
   if (!inside) return;
@@ -338,14 +371,19 @@ function inMove(dz) {
 function frame() {
   const out = () => { if (inside) setInside(false); };
   // шаги: элементы — снаружи (битум и лента видны), трубы, лоток, скобы — в разрезе
-  const stepCut = () => { const st = steps[stepIdx]; cut = !!st && !st.pre && !st.fin && (!st.kind || st.kind === 'FORM'); };   // опалубка — в разрезе: видны скобы во внутреннем щите
+  const stepCut = () => { const st = steps[stepIdx]; cut = !!st && !st.pre && !st.fin && (!st.kind || st.kind === 'FORM' || st.kind === 'ARM'); };   // опалубка — в разрезе: видны скобы во внутреннем щите; 0.13: арматура и гильзы — тоже в разрезе
   $('#bCut').onclick = () => { out(); cut = !cut; applyState(); };
   $('#bExp').onclick = () => { out(); expTarget = expTarget > 0 ? 0 : 1; applyState(); };
   $('#bLbl').onclick = () => { showLbl = !showLbl; applyState(); };
   $('#bCoat').onclick = () => { out(); showCoat = !showCoat; applyState(); };
   $('#bCoat').hidden = !M.gzAny;   // 0.11: гидроизоляции нет (сухой грунт) — кнопку не показываем
   $('#bCoat').title = M.gzAny ? (M.gfull ? 'Гидроизоляция полная (лист «Условия»)' : 'Гидроизоляция по грунтовым условиям') : '';
+  $('#bSurf').onclick = () => { showSurf = !showSurf; applyState(); };
+  $('#bSurf').textContent = {'Г': 'Газон', 'Т': 'Тротуар', 'Д': 'Дорога', 'Н': 'Грунт'}[M.place] || 'Покрытие'; $('#bSurf').title = 'Покрытие над колодцем: ' + (KC.PLACE[M.place] || '');
   $('#bIn').onclick = () => setInside(!inside);
+  $('#vpH').onclick = () => { const n = M.hatches ? M.hatches.length : 1, v = inside && inside.vp; setVp({k: 'h', i: v && v.k === 'h' ? (v.i + 1) % n : 0}); };
+  $('#vpC').onclick = () => { const v = inside && inside.vp; setVp({k: 'c', i: v && v.k === 'c' ? (v.i + 1) % 4 : 0}); };
+  $('#vpT').onclick = () => setVp({k: 't'});
   $('#inUp').onclick = () => inMove(.3);
   $('#inDn').onclick = () => inMove(-.3);
   $('#bReset').onclick = () => { if (inside) setInside(false); else resetView(stepIdx >= 0); };
@@ -431,6 +469,7 @@ function animPlanVV(i) {
   if (cur.has('gil') && cur.has('pipe')) { T.push({type: 'slide', ms: ms('gil'), d0: .5, t0: 0, d: .9, hide: true}); T.push({type: 'slide', ms: ms('pipe'), d0: 1.6, t0: .9, d: 1.6, hide: true}); t = 2.5; }
   else if (cur.has('pipe')) { T.push({type: 'slide', ms: ms('pipe'), d0: 1.6, t0: 0, d: 1.6}); t = 1.6; }
   if (cur.has('zamok')) { T.push({type: 'grow', ms: ms('zamok'), pivot: M.zBase, t0: t, d: 1.0, hide: true}); t += 1.0; }   // 0.12: водоупорный замок — после труб
+  if (cur.has('arm') && !cur.has('form')) { T.push({type: 'grow', ms: ms('arm'), pivot: 0, t0: 0, d: 1.6, hide: true}); T.push({type: 'cut', t0: 1.7}); t = 2.0; }   // 0.13: арматура стен — отдельный шаг, растёт снизу вверх
   if (cur.has('form')) {   // опалубка: щиты встают снизу вверх, потом разрез — видно внутренний щит
     T.push({type: 'grow', ms: ms('form'), pivot: -.02, t0: 0, d: 1.6, hide: true});
     T.push({type: 'cut', t0: 1.8}); t = 2.7; }
@@ -737,10 +776,10 @@ function buildPanelVV(w) {
       <tr><td>Снаружи</td><td class="r">${M.okl ? `оклеечная: гидроизол 2–3 слоя на мастике, до ${sgn(M.zOkl - M.zg)} м, ${fmt(N(w, 'gout'))} м²` : M.gzOld ? `горячий битум, ${fmt(N(w, 'gout'))} м²` : M.gzOut ? `горячий битум ${KC.gzWhy(M).zone}, ${fmt(N(w, 'gout'))} м²` : 'не нужна — грунт сухой'}</td></tr>
       <tr><td>Внутри</td><td class="r">${N(w, 'gin') ? (M.pII && !M.okl ? `горячий битум (просадочные II), ${fmt(N(w, 'gin'))} м²` : `${M.gzOld ? '' : 'Битрон-11, '}${fmt(N(w, 'gin'))} м²`) : 'не нужна'}</td></tr>
       ${M.tapes.length ? `<tr><td>Лента на стыки</td><td class="r">гидроизол ГИ-Г${M.tapeN > 1 ? ' в ' + M.tapeN + ' слоя' : ''} · ${M.tapes.length} стыков${M.gzAll || M.okl ? '' : ' в зоне воды'} · ${fmt(N(w, 'lenta'))} м²</td></tr>` : ''}
-      ${M.ugv !== null ? `<tr><td>Грунтовые воды</td><td class="r">УГВ ${fmt(M.ugv)} м от земли${M.wetV ? '' : ' — ниже колодца'}</td></tr>` : ''}${M.beton ? `<tr><td>Бетон</td><td class="r">${esc(M.beton)}</td></tr>` : ''}
+      ${M.ugv !== null ? `<tr><td>Грунтовые воды</td><td class="r">${M.ugv2 ? `УГВ макс. ${fmt(M.ugv)} м (установившийся ${fmt(M.ugv0)} м)` : `УГВ ${fmt(M.ugv)} м от земли`}${M.wetV ? '' : ' — ниже колодца'}</td></tr>` : ''}${M.beton ? `<tr><td>Бетон</td><td class="r">${esc(M.beton)}</td></tr>` : ''}
       ${M.gil ? `<tr><td>Гильзы (стальной футляр)</td><td class="r">${[...new Set(M.pipes.filter(p => p.sl).map(p => `Ø${p.gD}×${p.gSmm}`))].join(', ')} · L ${mm(M.gilL)} · ${M.gil} шт.</td></tr>` : ''}
       ${M.hatches.some(g => g.nab) ? `<tr><td>Набетонка горловины</td><td class="r">М100 · h ${mm(M.nabH)}${nG > 1 ? ' ×' + nG : ''} · ${fmt(M.nabV, 3)} м³</td></tr>` : ''}</tbody></table>
-      <div class="note">ТПР 901-09-11.84, Альбом ${M.rect ? 'IV' : 'II'}, лист АС-1. Арматура (задвижки, фасонные части) в 3D пока не показана.</div></div>
+      <div class="note">ТПР 901-09-11.84, Альбом ${M.rect ? 'IV' : 'II'}, лист АС-1. Задвижки и фасонные части — по схеме узла проекта сети${S(w, 'uzel') ? ' ' + esc(S(w, 'uzel')) : ''}, в 3D не показаны.</div></div>
     <div class="msg ${msgs.length ? 'bad' : ''}">Проверка: ${msgs.length ? msgs.map(esc).join('; ') : 'ОК'}</div>
     <div class="note">Модель построена по данным таблицы «Авто Колодцы В1», переданным в ссылке. Демонстрационная версия KOLSB.</div>`;
 }
@@ -771,7 +810,7 @@ function buildPanel(w, obj) {
       <tr><td>Основание (грунт ${M.grunt})</td><td class="r">${M.base.map(b => esc(b.n)).join('<br>')}${M.zamok ? '<br>водоупорный замок 600×400' : ''}</td></tr>
       <tr><td>Снаружи</td><td class="r">${M.okl ? `оклеечная: гидроизол 2–3 слоя на мастике, до ${sgn(M.zOkl - M.zg)} м` : M.gzOld ? 'битумная мастика' : M.gzOut ? `горячий битум ${KC.gzWhy(M).zone}` : 'не нужна — грунт сухой'}</td></tr>
       ${!M.gzOld && N(w, 'gin') ? `<tr><td>Внутри</td><td class="r">${M.pII && !M.okl ? 'горячий битум (просадочные II)' : 'Битрон-11'}, ${fmt(N(w, 'gin'))} м²</td></tr>` : ''}
-      ${M.ugv !== null ? `<tr><td>Грунтовые воды</td><td class="r">УГВ ${fmt(M.ugv)} м от земли${M.wetV ? '' : ' — ниже колодца'}</td></tr>` : ''}${M.beton ? `<tr><td>Бетон</td><td class="r">${esc(M.beton)}</td></tr>` : ''}
+      ${M.ugv !== null ? `<tr><td>Грунтовые воды</td><td class="r">${M.ugv2 ? `УГВ макс. ${fmt(M.ugv)} м (установившийся ${fmt(M.ugv0)} м)` : `УГВ ${fmt(M.ugv)} м от земли`}${M.wetV ? '' : ' — ниже колодца'}</td></tr>` : ''}${M.beton ? `<tr><td>Бетон</td><td class="r">${esc(M.beton)}</td></tr>` : ''}
       ${M.tapes.length ? `<tr><td>Лента на стыки</td><td class="r">гидроизол ГИ-Г${M.tapeN > 1 ? ' в ' + M.tapeN + ' слоя' : ''} · ${M.tapes.length} стыков${M.gzAll || M.okl ? '' : ' в зоне воды'} · полоса ${fmt(M.tapeW)} м · ${fmt(N(w, 'lenta'))} м²</td></tr>` : '<tr><td>Лента на стыки</td><td class="r">не нужна — стыки выше зоны воды</td></tr>'}</tbody></table>
       <div class="note">Основание — по ТПР 902-09-22.84, Альбом II, лист АС-1.</div></div>
     <div class="msg ${S(w, 'msg') === 'ОК' ? '' : 'bad'}">Проверка расчёта: ${esc(S(w, 'msg'))}</div>
