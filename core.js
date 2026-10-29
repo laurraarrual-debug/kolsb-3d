@@ -16,6 +16,8 @@ KC.fmt = (x, d = 2) => (x < -0.0005 ? '−' : '') + Math.abs(x).toFixed(d).repla
 KC.sgn = (x, d = 3) => (x > 0.0005 ? '+' : x < -0.0005 ? '−' : '±') + Math.abs(x).toFixed(d).replace('.', ',');
 KC.esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
 const fmt = KC.fmt, sgn = KC.sgn, mmS = x => String(Math.round(x * 1000));   // размеры — в мм, отметки — в м
+// 0.15: mm() вызывался в шагах грунта III (просадочные), но не был объявлен → паспорт и сборка К1 в просадочных падали
+const mm = v => Math.round(v * 1000);
 const dir = t => [Math.cos(t), Math.sin(t)];
 const add = (a, b) => [a[0] + b[0], a[1] + b[1]];
 const mul = (a, k) => [a[0] * k, a[1] * k];
@@ -278,12 +280,14 @@ function distPoly(pts, x, y) {
 }
 function buildLotok(M) {
   const R = M.Rin, w = M.Du / 2, k = .55 * R, o = M.pipes[0], uo = dir(o.ang), Po = mul(uo, R + .06), ch = [];
+  // 0.15: перепадный вход без стенки-растекателя (перепад до 0,35 м) — канал от стены под входом, как у обычного входа
+  //       (раньше канала не было: у колодца без других входов — короткий обрубок от середины, паспорт падал на стрелке)
+  M.hasWall = M.per && M.wall.length > 0 && M.pipes[1];
   M.pipes.forEach((p, i) => {
-    if (i === 0 || p.drop) return;
+    if (i === 0 || (p.drop && M.hasWall)) return;
     const ui = dir(p.ang), Pi = mul(ui, R + .06);
     ch.push({pts: bez(Pi, add(Pi, mul(ui, -k - .06)), add(Po, mul(uo, -k - .06)), Po), from: i});
   });
-  M.hasWall = M.per && M.wall.length > 0 && M.pipes[1];
   if (M.hasWall) {
     const ui = dir(M.pipes[1].ang), Q = mul(ui, M.dw - M.tw);
     ch.push({pts: bez(Q, add(Q, mul(ui, -k * .5)), add(Po, mul(uo, -k)), Po), from: 1, wall: true});
@@ -461,7 +465,7 @@ KC.stepsOf = function (M) {
       if (e.first) todo = [tUnder(e) ? 'На раствор М100, шов 10 мм; стык — лентой.' : 'На раствор М100, шов 10 мм, швы заполнить.', hasIn ? `Проёмы у дна — ${nLow} шт.; вход перепада — на ${H(M.zin)} м.` : `Проёмы под трубы — ${nLow} шт., по направлениям с плана.`,
         nsk ? `Скобы ×${nsk} — в отверстия; следом — трубы и лоток.` : 'Следом — трубы и лоток, до остальных колец.'];
       else if (!nsk) todo = sm ? [`На верх нижнего кольца — ${sm.mark} ×${sm.n} ${msLay(sm)}.`, 'Раствор М100, шов 10 мм; затем кольцо.', hasIn ? inL : top] : ['На раствор М100, шов 10 мм.', 'Кольцо — соосно нижнему, швы заполнить.', hasIn ? inL : top];
-      else if (sm && hasIn) { todo = [`На верх нижнего кольца — ${sm.mark} ×${sm.n} ${msLay(sm)}.`, 'Раствор М100, шов 10 мм; затем кольцо.', inL]; skChk = true; }
+      else if (sm && hasIn) { todo = [`На верх нижнего кольца — ${sm.mark} ×${sm.n} ${msLay(sm)}; шов — раствор М100, 10 мм.`, inL]; skChk = true; }   // 0.15: короче — не вылезало за карточку
       else if (sm) todo = [`На нижнее кольцо — ${sm.mark} ×${sm.n} ${msLay(sm)}.`, `Раствор М100, шов 10 мм; верх — ${H(e.z1)} м.`, skT];
       else todo = ['На раствор М100, шов 10 мм, соосно нижнему.', hasIn ? inL : top, skT];
       out.push({...base, els: els2, t: `Кольцо ${e.mark}${e.first ? ' — нижнее' : ''}`, todo,
