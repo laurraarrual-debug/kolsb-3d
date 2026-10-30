@@ -1068,5 +1068,198 @@ function wallCutZ(holes, phiS, Rm, z0, z1) {
     iv = nx; }
   return iv.filter(([p, w]) => w - p > 1e-6);
 }
+/* ---------- 0.18: изделия колодца — карточки «как лист изделия в ТПР»: позиция, марка, сколько, масса, документ и чертёж в размерах (мм):
+   кольца (вид сверху и разрез), плиты днища и перекрытия (вид сверху с лазом и его смещением, разрез), прямоугольные плиты и днища
+   (вид сверху, лаз от краёв, вид сбоку), ПД6 (отверстие и ниша под люк), балки (вид сбоку, гнездо в стене — наша условность: +50 с боков,
+   раствор 20 снизу, 30 за торцом), стенки перепадных СР (у нижней — проём). Размеры — габариты модели и «Справочника»; армирование,
+   закладные и подробности — по документу изделия. Люки, решётки и монолит — без карточки. Общее для паспорта и сайта ---------- */
+const SHEET = {'П11Д-8': 38, 'П15Д-5': 39, 'П18Д-5': 41, 'П21Д-5': 44, 'П24Д-5': 47, 'П26Д-5': 50, 'ПО2': 23, 'ПО3': 23, 'ПО4': 23, 'Б8': 21, 'Б4': 20, 'Б2': 20};
+KC.cardGeo = function (M, mark) {
+  const mmr = v => Math.round(v * 1000), d = (M.dims || {})[mark], RE = (KC.VV && KC.VV.RE) || {}, re = RE[mark];
+  const num = v => +String(v || '').replace(',', '.') || 0;
+  const e = M.els.find(x => x.mark === mark);
+  if (!e) { const i = (M.wall || []).findIndex(x => x.mark === mark), p = (M.wall || [])[i];   // стенки перепадного К1 (СР): нижняя — с проёмом
+    return p ? {type: 'panel', key: p.key, w: mmr(M.bw || 1.2), h: mmr(p.z1 - p.z0), t: mmr(M.tw || .1), cut: i === 0 && M.wcut ? {c: mmr(M.wcut.c), h: mmr(M.wcut.h)} : null} : null; }
+  if (['КС', 'КГ', 'КО', 'К10'].includes(e.kind)) return {type: 'ring', key: e.key, din: d ? num(d.din) : mmr(2 * e.rin), dout: d ? num(d.dout) : mmr(2 * e.rout), h: d && d.h ? num(d.h) : mmr(e.z1 - e.z0)};
+  if (['ПН', 'ПП', 'П10'].includes(e.kind)) {
+    const dout = d && num(d.dout) ? num(d.dout) : mmr(2 * e.rout), h = d && d.h ? num(d.h) : mmr(e.z1 - e.z0);
+    let hole = null;
+    if (e.kind !== 'ПН') { const q = e.holes && e.holes.length ? e.holes[0] : {x: M.gx || 0, y: M.gy || 0, r: .35};
+      hole = {d: d && num(d.din) ? num(d.din) : mmr(2 * q.r), off: mmr(Math.hypot(q.x - (e.cx || 0), q.y - (e.cy || 0)))}; }
+    return {type: 'disc', key: e.key, dout, h, hole}; }
+  if (e.kind === 'ПЛ' || e.kind === 'ДН') {   // прямоугольные: длинная сторона — по горизонтали; лаз — от левого и нижнего края
+    const lx = e.x1 - e.x0, ly = e.y1 - e.y0, rot = ly > lx + 1e-6;
+    const holes = (e.holes || (e.hole ? [e.hole] : [])).map(q => rot ? {x: mmr(q.y - e.y0), y: mmr(e.x1 - q.x), d: mmr(2 * q.r)} : {x: mmr(q.x - e.x0), y: mmr(q.y - e.y0), d: mmr(2 * q.r)});
+    return {type: 'rect', key: e.key, L: mmr(rot ? ly : lx), B: mmr(rot ? lx : ly), h: re ? re[2] : mmr(e.z1 - e.z0), holes}; }
+  if (e.kind === 'БЛ') { const lx = e.x1 - e.x0, ly = e.y1 - e.y0;
+    const g = {type: 'beam', key: e.key, L: re ? re[1] : mmr(Math.max(lx, ly)), b: re ? re[0] : mmr(Math.min(lx, ly)), h: re ? re[2] : mmr(e.z1 - e.z0)};
+    // гнездо — как на модели (corevv, M.pockets: ширина +50 с боков, низ −20, глубина — конец + 30 или насквозь); балка поперёк колодца, концы — в стенах
+    if (M.rect && M.B && e.y0 < -M.B / 2 && e.y1 > M.B / 2) { const t = M.t || .45, ye = Math.max(e.y1, -e.y0), brg = ye - M.B / 2, need = brg + .03;
+      g.pocket = {brg: mmr(brg), clear: mmr(M.B), w: g.b + 100, hh: g.h + 20, dep: mmr(Math.min(t, need)), thru: need >= t - 1e-4, t: mmr(t), out: brg > t + .005 ? mmr(brg - t) : 0}; }
+    return g; }
+  if (e.kind === 'ПД') { const ab = String(d ? d.dout : '2500×1750').split(/[×x]/).map(num);
+    return {type: 'pd', key: e.key, L: ab[0] || 2500, B: ab[1] || 1750, h: d && d.h ? num(d.h) : 220, hole: d && num(d.din) ? num(d.din) : 580, niche: 940, nh: 110}; }
+  return null;
+};
+let CARDN = 0;
+KC.cardSvg = function (g, opt = {}) {
+  const id = 'kc' + (++CARDN), f = v => (+v).toFixed(1), tw = t => String(t).length * 6.1;
+  const wide = g.type === 'beam' && g.pocket && opt.wide, tall = g.type === 'beam' && g.pocket && !opt.wide;
+  const W = wide ? 620 : 300; let H = tall ? 258 : 186;
+  let b = '';
+  const P = x => { b += x; };
+  const line = (x1, y1, x2, y2, cl) => P(`<path d="M${f(x1)} ${f(y1)}L${f(x2)} ${f(y2)}" class="${cl}"/>`);
+  const rect = (x, y, w, h, cl) => P(`<rect x="${f(x)}" y="${f(y)}" width="${f(Math.max(w, .5))}" height="${f(Math.max(h, .5))}" class="${cl}"/>`);
+  const circ = (x, y, r, cl) => P(`<circle cx="${f(x)}" cy="${f(y)}" r="${f(r)}" class="${cl}"/>`);
+  const txt = (x, y, t, cl = 'kcT', anc = 'middle', rot) => P(`<text x="${f(x)}" y="${f(y)}" class="${cl}" text-anchor="${anc}"${rot ? ` transform="rotate(${rot} ${f(x)} ${f(y)})"` : ''}>${t}</text>`);
+  const vt = (x, y, t) => txt(x, y, t, 'kcV');
+  const tick = (x, y) => `M${f(x - 2.6)} ${f(y + 2.6)}L${f(x + 2.6)} ${f(y - 2.6)}`;
+  // размер по горизонтали: линия на высоте y с засечками; выносные — от точек детали (o.ext = [y у x1, y у x2]); текст над линией (o.below — под),
+  // не влез между засечками — рядом (o.out: 'r' / 'l')
+  const dH = (x1, x2, y, t, o = {}) => {
+    if (o.ext) o.ext.forEach((ye, i) => { const x = i ? x2 : x1; if (Math.abs(ye - y) > 3) line(x, ye + (y > ye ? 1.5 : -1.5), x, y + (y > ye ? 2.5 : -2.5), 'kcX'); });
+    P(`<path d="M${f(x1 - 2)} ${f(y)}H${f(x2 + 2)}${tick(x1, y)}${tick(x2, y)}" class="kcD"/>`);
+    const fits = tw(t) + 6 < x2 - x1;
+    if (fits || !o.out) txt((x1 + x2) / 2, o.below ? y + 11 : y - 3.5, t);
+    else txt(o.out === 'r' ? x2 + 5 : x1 - 5, y + 3.6, t, 'kcT', o.out === 'r' ? 'start' : 'end'); };
+  const dV = (y1, y2, x, t, o = {}) => {   // текст повёрнут, слева от линии (o.right — справа); короткий — горизонтально рядом
+    if (o.ext) o.ext.forEach((xe, i) => { const y = i ? y2 : y1; if (Math.abs(xe - x) > 3) line(xe + (x > xe ? 1.5 : -1.5), y, x + (x > xe ? 2.5 : -2.5), y, 'kcX'); });
+    P(`<path d="M${f(x)} ${f(y1 - 2)}V${f(y2 + 2)}${tick(x, y1)}${tick(x, y2)}" class="kcD"/>`);
+    if (tw(t) + 6 < y2 - y1) txt(o.right ? x + 10.5 : x - 3.5, (y1 + y2) / 2, t, 'kcT', 'middle', -90);
+    else txt(o.right ? x + 5 : x - 5, (y1 + y2) / 2 + 3.6, t, 'kcT', o.right ? 'start' : 'end'); };
+  const axes = (x, y, rx, ry) => { line(x - rx, y, x + rx, y, 'kcA'); line(x, y - ry, x, y + ry, 'kcA'); };
+  const S = String;
+  if (g.type === 'ring' || g.type === 'disc') {   // слева — вид сверху, справа — разрез (кольцо, плита с лазом) или вид сбоку (плита днища), в одном масштабе
+    const D = g.dout, R = 54, s = 2 * R / D, cx = 12 + R, cy = 36 + R;
+    vt(cx, 11, 'ВИД СВЕРХУ');
+    circ(cx, cy, R, 'kcB');
+    if (g.type === 'ring') { const r = g.din / 2 * s; circ(cx, cy, r, 'kcH'); axes(cx, cy, R + 5, R + 5); dH(cx - r, cx + r, cy, 'Ø' + g.din); }
+    else { axes(cx, cy, R + 5, R + 5);
+      if (g.hole) { const hr = g.hole.d / 2 * s, hx = cx + g.hole.off * s; circ(hx, cy, hr, 'kcH'); line(hx, cy - hr - 4, hx, cy + hr + 4, 'kcA');
+        txt(hx, cy - 4, 'Ø' + g.hole.d);
+        if (g.hole.off > 5) dH(cx, hx, cy + hr + 8, S(g.hole.off), {below: true, out: 'r', ext: [cy, cy]}); } }
+    dH(cx - R, cx + R, 27, 'Ø' + D, {ext: [cy, cy]});
+    const xs = cx + R + 34, w2 = 2 * R, hz = Math.max(g.h * s, 2.5);
+    H = Math.max(cy + R + 12, g.type === 'ring' ? 36 + hz + 26 : 0);
+    if (g.type === 'ring') { const y0 = 36, tt = Math.max((g.dout - g.din) / 2 * s, 1.5);
+      vt(xs + w2 / 2, 11, 'РАЗРЕЗ');
+      rect(xs, y0, tt, hz, 'kcS'); rect(xs + w2 - tt, y0, tt, hz, 'kcS');
+      line(xs + tt, y0, xs + w2 - tt, y0, 'kcL'); line(xs + tt, y0 + hz, xs + w2 - tt, y0 + hz, 'kcL'); line(xs + w2 / 2, y0 - 5, xs + w2 / 2, y0 + hz + 5, 'kcA');
+      dV(y0, y0 + hz, xs + w2 + 9, S(g.h), {right: true, ext: [xs + w2, xs + w2]});
+      dH(xs, xs + tt, y0 + hz + 9, S((g.dout - g.din) / 2), {below: true, out: 'r', ext: [y0 + hz, y0 + hz]}); }
+    else { const ys = cy - hz / 2;
+      vt(xs + w2 / 2, ys - 9, g.hole ? 'РАЗРЕЗ' : 'ВИД СБОКУ');
+      if (g.hole) { const a1 = xs + (R + (g.hole.off - g.hole.d / 2) * s), a2 = xs + (R + (g.hole.off + g.hole.d / 2) * s);
+        rect(xs, ys, a1 - xs, hz, 'kcS'); rect(a2, ys, xs + w2 - a2, hz, 'kcS'); line((a1 + a2) / 2, ys - 5, (a1 + a2) / 2, ys + hz + 5, 'kcA'); }
+      else rect(xs, ys, w2, hz, 'kcB');
+      dV(ys, ys + hz, xs + w2 + 9, S(g.h), {right: true, ext: [xs + w2, xs + w2]}); }
+  } else if (g.type === 'rect' || g.type === 'pd') {   // вид сверху и под ним вид сбоку (разрез у ПД6), в одном масштабе
+    const s = Math.min(226 / g.L, 116 / (g.B + g.h)), w = g.L * s, hgt = g.B * s, hz = Math.max(g.h * s, 2.5), x0 = 38 + (226 - w) / 2, y0 = 36, ys = y0 + hgt + 25;
+    vt(x0 + w / 2, 11, 'ВИД СВЕРХУ');
+    rect(x0, y0, w, hgt, 'kcB');
+    dH(x0, x0 + w, 27, S(g.L), {ext: [y0, y0]}); dV(y0, y0 + hgt, x0 - 10, S(g.B), {ext: [x0, x0]});
+    if (g.type === 'rect') g.holes.forEach((q, i) => { const hx = x0 + q.x * s, hy = y0 + hgt - q.y * s, r = q.d / 2 * s;
+      circ(hx, hy, r, 'kcH'); txt(hx, hy + 3.6, 'Ø' + q.d);
+      if (i) return;
+      const up = hy - r - 20 > y0, yd = up ? hy - r - 8 : hy + r + 8, xd = hx + r + 8;
+      line(hx, up ? hy - r - 2 : hy + r + 2, hx, yd + (up ? -2.5 : 2.5), 'kcA'); line(hx + r + 2, hy, xd + 2.5, hy, 'kcA');
+      dH(x0, hx, yd, S(q.x), {below: !up, out: 'l'}); dV(hy, y0 + hgt, xd, S(q.y), {right: true}); });
+    else { const hx = x0 + w / 2, hy = y0 + hgt / 2, nr = g.niche / 2 * s, hr = g.hole / 2 * s;
+      P(`<circle cx="${f(hx)}" cy="${f(hy)}" r="${f(nr)}" class="kcB2"/>`); circ(hx, hy, hr, 'kcH'); axes(hx, hy, nr + 5, nr + 5);
+      txt(hx, hy + 3.6, 'Ø' + g.hole); dH(hx - nr, hx + nr, hy - nr - 7, 'ниша Ø' + g.niche, {ext: [hy, hy]}); }
+    vt(x0 + w / 2, ys - 6, g.type === 'pd' ? 'РАЗРЕЗ' : 'ВИД СБОКУ');
+    if (g.type === 'pd') { const n1 = x0 + (w - g.niche * s) / 2, n2 = n1 + g.niche * s, h1 = x0 + (w - g.hole * s) / 2, h2 = h1 + g.hole * s, nz = g.nh / g.h * hz;
+      P(`<path d="M${f(x0)} ${f(ys)}H${f(n1)}V${f(ys + nz)}H${f(h1)}V${f(ys + hz)}H${f(x0)}ZM${f(n2)} ${f(ys)}H${f(x0 + w)}V${f(ys + hz)}H${f(h2)}V${f(ys + nz)}H${f(n2)}Z" class="kcS"/>`);
+      line(x0 + w / 2, ys - 4, x0 + w / 2, ys + hz + 4, 'kcA');
+      dV(ys, ys + nz, x0 - 9, S(g.nh), {ext: [n1, n1]}); }
+    else rect(x0, ys, w, hz, 'kcB');
+    dV(ys, ys + hz, x0 + w + 9, S(g.h), {right: true, ext: [x0 + w, x0 + w]});
+  } else if (g.type === 'beam') {
+    const pk = g.pocket;
+    // вид сбоку: длина; у балки в гнёздах — где грани стен (пунктир), сколько в стене и между стенами
+    const side = (ox, oy, Wv) => { const s = Math.min(Wv / g.L, 32 / g.h), w = g.L * s, hz = g.h * s, x0 = ox + (Wv - w) / 2, y0 = oy + 34;
+      vt(x0 + w / 2, oy + 11, 'ВИД СБОКУ'); rect(x0, y0, w, hz, 'kcB');
+      dH(x0, x0 + w, y0 - 8, S(g.L), {ext: [y0, y0]});
+      if (pk) { const bw = pk.brg * s;
+        for (const x of [x0 + bw, x0 + w - bw]) line(x, y0 - 4, x, y0 + hz + 4, 'kcN');
+        dH(x0, x0 + bw, y0 + hz + 9, S(pk.brg), {below: true, ext: [y0 + hz, y0 + hz]}); dH(x0 + bw, x0 + w - bw, y0 + hz + 9, `${pk.clear} в свету`, {below: true});
+        dH(x0 + w - bw, x0 + w, y0 + hz + 9, S(pk.brg), {below: true, ext: [y0 + hz, y0 + hz]}); }
+      else dV(y0, y0 + hz, x0 + w + 9, S(g.h), {right: true, ext: [x0 + w, x0 + w]}); };
+    // сечение: без гнезда — просто b×h; с гнездом — вид на стену из колодца: гнездо (b + 50 + 50) × (h + 20), в нём балка, под ней раствор
+    const sect = (ox, oy, s) => { const mg = pk ? 50 : 0, wf = pk ? 70 : 0, Wf = (g.b + 2 * mg + 2 * wf) * s, x0 = ox, y0 = oy + 34, bx = x0 + (wf + mg) * s, bw = g.b * s, hz = g.h * s;
+      vt(x0 + Wf / 2, oy + 11, pk ? 'ГНЕЗДО В СТЕНЕ' : 'СЕЧЕНИЕ');
+      if (pk) { const ph = (g.h + 20) * s, px = x0 + wf * s, pw = (g.b + 2 * mg) * s;
+        rect(x0, y0, Wf, ph + 60 * s, 'kcW'); rect(px, y0, pw, ph, 'kcF'); rect(bx, y0 + hz, bw, 20 * s, 'kcM');
+        rect(bx, y0, bw, hz, 'kcS');
+        dH(bx, bx + bw, y0 - 8, S(g.b), {ext: [y0, y0]});
+        dH(px, px + pw, y0 + ph + 60 * s + 9, S(pk.w), {below: true, ext: [y0 + ph, y0 + ph]});
+        dV(y0, y0 + hz, x0 - 8, S(g.h), {ext: [bx, bx]}); dV(y0, y0 + ph, x0 + Wf + 8, S(pk.hh), {right: true, ext: [px + pw, px + pw]}); }
+      else { rect(bx, y0, bw, hz, 'kcS'); dH(bx, bx + bw, y0 + hz + 9, S(g.b), {below: true, ext: [y0 + hz, y0 + hz]}); dV(y0, y0 + hz, bx + bw + 9, S(g.h), {right: true, ext: [bx + bw, bx + bw]}); } };
+    // разрез по оси балки через стену: конец балки в гнезде, раствор под ним, за торцом — бетон (или гнездо насквозь и прилив снаружи)
+    const wall = (ox, oy, s) => { const li = 200, x0 = ox, xi = x0 + li * s, t = pk.t * s, y0 = oy + 34, hz = g.h * s, ph = (g.h + 20) * s, below = 60 * s, dep = pk.dep * s, be = xi + pk.brg * s;
+      vt(x0 + (li * s + t) / 2, oy + 11, 'РАЗРЕЗ ПО БАЛКЕ');
+      rect(xi, y0, t, ph + below, 'kcW2');
+      rect(xi, y0, dep, ph, 'kcF'); rect(xi, y0 + hz, pk.brg * s, 20 * s, 'kcM');
+      if (pk.out) rect(xi + t - 1.5, y0 - 1, (pk.out + 100) * s + 1.5, hz + 100 * s + 1, 'kcW');   // прилив снаружи
+      rect(x0, y0, be - x0, hz, 'kcS');
+      P(`<path d="M${f(x0)} ${f(y0 - 3)}l3 ${f(hz * .3)}l-6 ${f(hz * .3)}l3 ${f(hz * .4 + 6)}" class="kcL"/>`);   // обрыв
+      txt(xi - 4, y0 + ph + below + 11, 'колодец', 'kcQ', 'end'); txt(xi + t / 2, y0 + ph + below + 11, 'стена', 'kcQ');
+      dH(xi, xi + t, y0 - 8, S(pk.t), {ext: [y0, y0]});
+      dH(xi, be, y0 + ph + below + 22, S(pk.brg), {below: true, out: 'r', ext: [y0 + hz, y0 + hz]});
+      dH(xi, xi + dep, y0 + ph + below + 36, S(pk.dep), {below: true, out: 'r', ext: [y0 + ph, y0 + ph]}); };
+    if (!pk) { side(8, 0, 178); sect(226, 0, Math.min(50 / g.b, 56 / g.h)); }
+    else if (wide) { const s = .155; side(6, 0, 268); sect(334, 0, s); wall(500, 0, s); }
+    else { const s = .135; side(10, 0, 280); sect(26, 94, s); wall(178, 94, s); }
+  } else if (g.type === 'panel') {   // стенка перепадного: вид спереди (у нижней — проём для протока) и толщина
+    const s = Math.min(170 / g.w, 128 / g.h), w = g.w * s, hgt = g.h * s, x0 = 40, y0 = 36, xs = x0 + w + 46, tz = Math.max(g.t * s, 3);
+    vt(x0 + w / 2, 11, 'ВИД СПЕРЕДИ');
+    if (g.cut) { const c1 = x0 + (w - g.cut.c * s) / 2, c2 = c1 + g.cut.c * s, ch = g.cut.h * s;
+      P(`<path d="M${f(x0)} ${f(y0)}H${f(x0 + w)}V${f(y0 + hgt)}H${f(c2)}V${f(y0 + hgt - ch)}H${f(c1)}V${f(y0 + hgt)}H${f(x0)}Z" class="kcB"/>`);
+      dH(c1, c2, y0 + hgt + 9, S(g.cut.c), {below: true, ext: [y0 + hgt, y0 + hgt]}); dV(y0 + hgt - ch, y0 + hgt, c2 + 8, S(g.cut.h), {right: true, ext: [c2, c2]});
+      txt((c1 + c2) / 2, y0 + hgt - ch - 5, 'проём', 'kcQ'); }
+    else rect(x0, y0, w, hgt, 'kcB');
+    dH(x0, x0 + w, 27, S(g.w), {ext: [y0, y0]}); dV(y0, y0 + hgt, x0 - 10, S(g.h), {ext: [x0, x0]});
+    vt(xs + tz / 2, 11, 'ВИД СБОКУ'); rect(xs, y0, tz, hgt, 'kcB');
+    dH(xs, xs + tz, y0 + hgt + 9, S(g.t), {below: true, out: 'r', ext: [y0 + hgt, y0 + hgt]});
+  }
+  const css = `<defs><pattern id="${id}h" patternUnits="userSpaceOnUse" width="4.5" height="4.5" patternTransform="rotate(45)"><rect width="4.5" height="4.5" fill="#d8d2c6"/><path d="M0 0V4.5" stroke="#8a8274" stroke-width=".8"/></pattern>`
+    + `<pattern id="${id}w" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect width="6" height="6" fill="#e3ded3"/><path d="M0 0V6" stroke="#a49c8e" stroke-width=".6"/></pattern></defs>`
+    + `<style>.kcB{fill:#ebe7df;stroke:#2e3338;stroke-width:1.2}.kcB2{fill:#dcd6ca;stroke:#2e3338;stroke-width:1}.kcS{fill:url(#${id}h);stroke:#2e3338;stroke-width:1.2}.kcH{fill:#fff;stroke:#2e3338;stroke-width:1.2}`
+    + `.kcL{fill:none;stroke:#2e3338;stroke-width:.8}.kcN{fill:none;stroke:#2e3338;stroke-width:.9;stroke-dasharray:5 3}.kcA{fill:none;stroke:#8a939c;stroke-width:.6;stroke-dasharray:10 3 2 3}`
+    + `.kcW{fill:#e3ded3;stroke:#7d776b;stroke-width:.8}.kcW2{fill:url(#${id}w);stroke:#2e3338;stroke-width:1}.kcF{fill:#f3efe6;stroke:#7d776b;stroke-width:.7;stroke-dasharray:3 2}.kcM{fill:#c9b78f;stroke:#7d6a45;stroke-width:.6}`
+    + `.kcD{fill:none;stroke:#2a5585;stroke-width:.85}.kcX{fill:none;stroke:#2a5585;stroke-width:.5}.kcT{font:600 10.5px Segoe UI,Arial,sans-serif;fill:#1d2329;paint-order:stroke;stroke:#fff;stroke-width:2.6px;stroke-linejoin:round}`
+    + `.kcQ{font:italic 9px Segoe UI,Arial,sans-serif;fill:#5b6670}.kcV{font:600 8.6px Segoe UI,Arial,sans-serif;fill:#6b7680;letter-spacing:.06em}</style>`;
+  return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" class="kcsvg${wide ? ' kcwide' : ''}">${css}${b}</svg>`;
+};
+KC.cardTxt = function (g) {   // размеры одной строкой
+  if (!g) return '';
+  if (g.type === 'ring') return `Ø${g.din}/${g.dout}, h ${g.h}`;
+  if (g.type === 'disc') return `Ø${g.dout}, h ${g.h}${g.hole ? `, лаз Ø${g.hole.d}${g.hole.off > 5 ? ` (${g.hole.off} от центра)` : ''}` : ''}`;
+  if (g.type === 'rect') return `${g.L}×${g.B}×${g.h}${g.holes.length ? `, лаз Ø${g.holes[0].d}` : ''}`;
+  if (g.type === 'beam') return `${g.b}×${g.h}, L ${g.L}`;
+  if (g.type === 'pd') return `${g.L}×${g.B}×${g.h}, отверстие Ø${g.hole}, ниша Ø${g.niche}×${g.nh}`;
+  if (g.type === 'panel') return `${g.w}×${g.h}×${g.t}${g.cut ? `, проём ${g.cut.c}×${g.cut.h}` : ''}`;
+  return '';
+};
+KC.cardDoc = function (r) {   // документ изделия: серия с листом, т.пр. или код АГСК
+  const c = String(r.code || '');
+  if (/^(серия|т\.пр\.)/.test(c)) return c + (SHEET[r.mark] ? `, лист ${SHEET[r.mark]}` : '');
+  if (c && c !== '-') return 'АГСК ' + c;
+  return /^СР/.test(r.mark) ? 'т.пр. 902-09-22.84, Альбом VII' : '';
+};
+KC.cards = function (M, opt = {}) {
+  const out = [], seen = new Set();
+  for (const r of M.rows || []) {
+    if (seen.has(r.mark)) continue; seen.add(r.mark);
+    const g = KC.cardGeo(M, r.mark); if (!g) continue;
+    let note = '';
+    if (g.type === 'beam' && g.pocket) { const p = g.pocket;
+      note = `Концы — в гнёздах продольных стен (т.пр. 901-09-11.84, Альбом IV, АС-11: верх балки = верх стен): в стене по ${p.brg} мм. Гнездо — наша условность: `
+        + `${p.w}×${p.hh} (балка + 50 мм с боков, раствор 20 мм под концом), глубина ${p.thru ? `насквозь (стена ${p.t} мм)${p.out ? `, конец выходит наружу на ${p.out} мм — прилив бетона снаружи` : ''}` : `${p.dep} мм (конец + 30)`}; зазоры — бетоном.`; }
+    else if (g.type === 'panel') note = g.cut ? 'Нижняя панель — проём вниз: проток из приямка в лоток. Крепление к кольцам — по Альбому VI.' : 'Крепление к кольцам — по Альбому VI.';
+    out.push({pos: r.pos, mark: r.mark, q: r.q, kg: r.kg, doc: KC.cardDoc(r), key: g.key, type: g.type, wide: !!(g.type === 'beam' && g.pocket && opt.wide), dimTxt: KC.cardTxt(g), note, svg: KC.cardSvg(g, opt)});
+  }
+  return out;
+};
 KC._ = {lineCircle, lineBox, minus, tileTexture, peTexture, monoTexture, corrGeo, tapeMatOf, b64u, zip, dir, ringHolesGeo, shellHolesGeo, holeCap, holeSurf, bufOf, wallCutZ};
 })(typeof window !== 'undefined' ? window : globalThis);

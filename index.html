@@ -84,6 +84,17 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:14px/1
 .legend i{flex:0 0 14px;height:14px;border-radius:4px;border:1px solid color-mix(in srgb,var(--ink) 22%,transparent)}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:2px 9px;background:var(--surface-2)}
+/* 0.18: изделия — карточки с чертежом в размерах (как в паспорте); нажатие — изделие подсвечивается на модели */
+.kcards{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+.kcard{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--surface);cursor:pointer;display:flex;flex-direction:column;gap:6px;outline:none}
+.kcard:hover,.kcard:focus-visible{border-color:var(--accent)}
+.kcard.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
+.kcard .kh{display:flex;gap:8px;align-items:flex-start;font-size:13px;line-height:1.3}
+.kcard .kn{flex:0 0 auto;min-width:22px;height:22px;padding:0 5px;box-sizing:border-box;border-radius:11px;background:#b8650a;color:#fff;font:700 12px var(--f);display:flex;align-items:center;justify-content:center}
+.kcard .kh b{font-size:14px}.kcard .kh small{display:block;color:var(--muted);font-size:11.5px}
+.kcard .kdr{background:#fbfaf7;border-radius:6px;padding:4px}
+.kcard svg{width:100%;height:auto;display:block}
+.kcard .knote{font-size:11.5px;color:var(--muted);line-height:1.35}
 .chip.per{border-color:var(--violet);color:var(--violet)} .chip.ms{border-color:var(--steel);color:var(--steel)}
 dl.facts{display:grid;grid-template-columns:1fr auto;gap:4px 12px;margin:0;font-variant-numeric:tabular-nums}
 dl.facts dt{color:var(--muted)} dl.facts dd{margin:0;text-align:right;font-weight:600}
@@ -464,7 +475,26 @@ function buildLabels() {
 function selectLbl(g) {
   sel = g && sel !== g ? g : null; selT0 = performance.now();
   for (const q of LB) { q.d.classList.toggle('sel', q === sel); q.w = 0; }
+  for (const c of document.querySelectorAll('.kcard')) c.classList.toggle('on', !!sel && !!sel.mark && c.dataset.mark === sel.mark);   // 0.18: карточка изделия
   applyState();
+}
+// 0.18: «Изделия — размеры» в «Данных»: те же карточки, что в паспорте (KC.cards — чертёж в размерах); нажатие — все изделия этой марки
+//       подсвечиваются на модели (как выбор по подписи); на телефоне лист «Данные» закрывается, чтобы было видно модель
+const KSEL = new Map();
+function cardsPanelHtml() {
+  let cs = []; try { cs = KC.cards(M); } catch (e) { console.error(e); return ''; }
+  if (!cs.length) return '';
+  return `<div><h2>Изделия — размеры</h2><div class="note">Как листы изделий в ТПР: номер — «Поз.» таблицы, размеры — в мм, габаритные (армирование и закладные — по документу изделия). Нажмите на изделие — оно подсветится на модели.</div>
+    <div class="kcards">${cs.map(c => `<div class="kcard" role="button" tabindex="0" data-mark="${esc(c.mark)}"><div class="kh"><span class="kn">${esc(String(c.pos))}</span><div><b>${esc(c.mark)}</b> ${c.q > 1 ? `×${c.q}, по ${Math.round(c.kg)} кг` : `${Math.round(c.kg)} кг`}<small>${esc(c.dimTxt)}${c.doc ? ' · ' + esc(c.doc) : ''}</small></div></div><div class="kdr">${c.svg}</div>${c.note ? `<div class="knote">${esc(c.note)}</div>` : ''}</div>`).join('')}</div></div>`;
+}
+function markSel(mark) {
+  if (anim) return;
+  let g = KSEL.get(mark);
+  if (!g) { const keys = new Set(M.els.filter(e => e.mark === mark).map(e => e.key).concat((M.wall || []).filter(p => p.mark === mark).map(p => p.key)));
+    g = {mark, has: ud => keys.has(ud.key) && !['bed', 'fill', 'pad'].includes(ud.part), d: {classList: {toggle() {}}, style: {}}}; KSEL.set(mark, g); }
+  if (inside) setInside(false);
+  selectLbl(g);
+  if (sel && matchMedia('(max-width:860px)').matches) sheet(false);
 }
 // выделение: свои копии материалов — «горящая» (emissive) у выделенного, полупрозрачная у остальных; линии кромок остальных — скрыть
 function applySel() {
@@ -741,6 +771,8 @@ function frame() {
   addEventListener('keydown', ev => { if (ev.key === 'Escape') menusClose(); });
   addEventListener('resize', menusClose);
   $('#bInfo').onclick = () => { menusClose(); sheet(!$('#panel').classList.contains('open')); };
+  $('#panelBody').addEventListener('click', ev => { const c = ev.target.closest('.kcard'); if (c) markSel(c.dataset.mark); });   // 0.18: карточка изделия — подсветка на модели
+  $('#panelBody').addEventListener('keydown', ev => { const c = ev.target.closest('.kcard'); if (c && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); markSel(c.dataset.mark); } });
   $('#bClose').onclick = () => sheet(false);
   $('.stage').addEventListener('pointerdown', ev => { if ($('#panel').classList.contains('open') && !ev.target.closest('.tools')) sheet(false); });
   addEventListener('keydown', ev => { if (ev.key === 'Escape' && $('#panel').classList.contains('open')) { ev.stopImmediatePropagation(); sheet(false); } else if (ev.key === 'Escape' && sel && !anim) selectLbl(null); });
@@ -1462,6 +1494,7 @@ function buildPanelVV(w) {
     <div><h2>Элементы</h2><table><thead><tr><th>Поз.</th><th>Марка</th><th>Размеры, мм</th><th class="r">Шт.</th><th class="r">кг</th></tr></thead><tbody>
       ${M.rows.map(r => `<tr><td>${r.pos}</td><td>${esc(r.mark)}</td><td>${esc(dimsOf(r.mark))}</td><td class="r">${r.q}</td><td class="r">${Math.round(r.q * r.kg)}</td></tr>`).join('')}</tbody></table>
       <div class="note">Цифра перед маркой на подписях модели — позиция в этой таблице (как «Поз.» в паспорте).</div></div>
+    ${cardsPanelHtml()}
     ${M.seis ? `<div><h2>Сейсмика: МС</h2><table><tbody>${[['ring', 'Швы колец'], ['pp', 'Кольцо — плита'], ['p10', 'Плита — КС10'], ['g10', 'Швы КС10'], ['p10t', 'КС10 — ПП10'], ['ppg', 'Плита — горловина'], ['gorl', 'Швы горловины'], ['gko', 'КС7 — КО6']].map(([k, t]) => { const l = M.seams.filter(s => s.kind === k); return l.length ? `<tr><td>${t}</td><td class="r">${l[0].mark} × ${l[0].n}${l.length > 1 ? ` × ${l.length} шв.` : ''}</td></tr>` : ''; }).join('')}
       ${M.zamE ? `<tr><td>Стык с днищем</td><td class="r">без МС: замок из бетона В12,5 · галтель ${mm(M.zamE.z1 - M.zamE.z0)}×${mm(M.zamE.rout - M.zamE.rin)} · ${fmt(M.zamE.vol, 3)} м³</td></tr>` : ''}${N(w, 'setR') ? `<tr><td>Сетка в стенах</td><td class="r">С3Вр1-150 · ${fmt(N(w, 'setR'))} кг</td></tr>` : ''}</tbody></table>
       <div class="note">ТПР 901-09-11.84, Альбом VI.88 (АС-3, АС-5): МС-1…4 — Н-образные, МС-5…8 — h-образные.</div></div>` : ''}
@@ -1481,6 +1514,7 @@ function buildPanelVV(w) {
     <div class="note">Модель построена по данным таблицы «Авто Колодцы В1», переданным в ссылке. Демонстрационная версия KOLSB.</div>`;
 }
 function buildPanel(w, obj) {
+  KSEL.clear();
   if (isVV()) return buildPanelVV(w);
   const mm = v => Math.round(v * 1000), nR = M.rings.length;
   const rsum = M.rings.reduce((s, r) => s + (r.z1 - r.z0) + KC.SEAM, 0), gW = M.ztop - M.V;
@@ -1502,6 +1536,7 @@ function buildPanel(w, obj) {
     <div><h2>Элементы</h2><table><thead><tr><th>Поз.</th><th>Марка</th><th>Размеры, мм</th><th class="r">Шт.</th><th class="r">кг</th></tr></thead><tbody>
       ${M.rows.map(r => `<tr><td>${r.pos}</td><td>${esc(r.mark)}</td><td>${esc(dimsOf(r.mark) || (/^Решётка/.test(r.mark) ? 'рамка 620×620' : ''))}</td><td class="r">${r.q}</td><td class="r">${Math.round(r.q * r.kg)}</td></tr>`).join('')}</tbody></table>
       <div class="note">Цифра перед маркой на подписях модели — позиция в этой таблице (как «Поз.» в паспорте).</div></div>
+    ${cardsPanelHtml()}
     ${M.seis ? `<div><h2>Сейсмика: МС</h2><table><tbody>${[['ring', 'Швы колец'], ['pp', 'Под ПП'], ['ppg', 'ПП — горловина'], ['gorl', 'Швы горловины']].map(([k, t]) => { const l = M.seams.filter(s => s.kind === k); return l.length ? `<tr><td>${t}</td><td class="r">${l[0].mark} × ${l[0].n}${l.length > 1 ? ` × ${l.length} шв.` : ''}</td></tr>` : ''; }).join('')}
       <tr><td>Шов с плитой днища</td><td class="r">обойма — бетон лотка</td></tr></tbody></table></div>` : ''}
     <div><h2>Основание и гидроизоляция</h2><table><tbody>
