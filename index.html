@@ -24,7 +24,19 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:14px/1
 #view{position:absolute;inset:0}
 #view canvas{display:block}
 .top{position:absolute;left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));top:max(10px,env(safe-area-inset-top));display:flex;justify-content:space-between;gap:8px;pointer-events:none}
-.ttl{pointer-events:auto;background:color-mix(in srgb,var(--surface) 90%,transparent);border:1px solid var(--line);border-radius:10px;padding:8px 12px;backdrop-filter:blur(6px);max-width:75%}
+.ttl{pointer-events:auto;background:color-mix(in srgb,var(--surface) 90%,transparent);border:1px solid var(--line);border-radius:10px;padding:8px 12px;backdrop-filter:blur(6px);max-width:100%}
+.tl{display:flex;flex-direction:column;align-items:flex-start;gap:6px;max-width:75%;min-width:0}
+.qbar{display:flex;gap:6px;pointer-events:auto}
+.btn.qb{min-height:34px;padding:7px 12px;font-size:13px;background:color-mix(in srgb,var(--surface) 90%,transparent);backdrop-filter:blur(6px)}
+.btn.qb[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
+.btn.dd::after{content:'';display:inline-block;margin-left:7px;vertical-align:2px;border:4.5px solid transparent;border-top-color:currentColor;border-bottom:0}
+.menu{position:absolute;z-index:6;min-width:176px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:5px;box-shadow:0 10px 28px rgba(0,0,0,.2);display:flex;flex-direction:column;gap:2px}
+.menu[hidden]{display:none}
+.mi{display:flex;align-items:center;justify-content:space-between;gap:12px;font:600 14px/1.2 var(--f);color:var(--ink);background:transparent;border:0;border-radius:8px;padding:11px 12px;text-align:left;cursor:pointer;min-height:42px}
+.mi:hover,.mi:focus-visible{background:var(--surface-2);outline:0}
+.mi::after{content:'';width:16px;height:16px;flex:none;border-radius:4px;border:1.5px solid var(--line)}
+.mi.mq{border-top:1px solid var(--line);border-radius:0 0 8px 8px;margin-top:3px;font-weight:500;color:var(--muted)}.mi.mq::after{display:none}
+.mi[aria-pressed="true"]::after{content:'✓';border-color:var(--accent);background:var(--accent);color:#1c1608;font:800 12px/16px var(--f);text-align:center}
 .ttl .k{font:600 10.5px var(--fc);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
 .ttl h1{margin:2px 0 0;font:700 21px/1.15 var(--f)} .ttl h1 b{color:var(--accent)}
 .ttl .s{font-size:12.5px;color:var(--muted)}
@@ -60,6 +72,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:14px/1
 .lbl.lp{text-align:center;padding:2px 5px;transform-origin:50% 50%}.lbl.lp small{display:none}.lbl.lp.sel small{display:block}
 .lbl.lb{color:#6b4f37;border-color:#b99c80;border-style:dashed}.lbl.lh{font-weight:500;color:var(--muted);background:transparent;border-color:transparent;pointer-events:none}
 .lbl.ld{font:600 11px var(--fm);color:var(--ink);background:color-mix(in srgb,var(--surface) 82%,transparent);border-color:transparent;pointer-events:none}
+.lbl.nb{border-color:var(--line);line-height:1.2}.lbl.nb small{display:block;font:500 10px var(--f);color:var(--muted)}
 #leaders{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
 #leaders path{fill:none;stroke:var(--muted);stroke-width:1;stroke-linejoin:round}
 #leaders path.s{stroke:var(--accent);stroke-width:1.6}
@@ -115,7 +128,8 @@ tr.sum td{font-weight:700;background:var(--surface-2)} tr.sum td.ok{color:var(--
     <div id="view"></div>
     <svg id="leaders" aria-hidden="true"></svg>
     <div id="labels"></div>
-    <div class="top"><div class="ttl"><div class="k" id="kk">Колодец 3D · паспорт сборки</div><h1 id="ttl">Колодец</h1><div class="s" id="sub"></div></div>
+    <div class="top"><div class="tl"><div class="ttl"><div class="k" id="kk">Колодец 3D · паспорт сборки</div><h1 id="ttl">Колодец</h1><div class="s" id="sub"></div></div>
+        <div class="qbar"><button class="btn qb" id="bLbl" aria-pressed="true">Подписи</button><button class="btn qb" id="bReset" title="Вернуть исходный вид">⟲ Вид</button></div></div>
       <button class="btn" id="bTheme" style="pointer-events:auto" aria-label="Светлая или тёмная тема">◐</button></div>
     <div class="stepcard" id="card" hidden>
       <div class="prog" id="prog" hidden><i id="progi"></i></div>
@@ -126,17 +140,22 @@ tr.sum td{font-weight:700;background:var(--surface-2)} tr.sum td.ok{color:var(--
     <div class="inui" id="inui" hidden><div class="hint" id="inHint"></div>
       <div class="vp" id="inVp" hidden><button class="btn" id="vpH" aria-pressed="true">Люк</button><button class="btn" id="vpC" aria-pressed="false">Углы</button><button class="btn" id="vpT" aria-pressed="false">Сверху</button></div>
       <div class="nav"><button class="btn" id="inUp" aria-label="Выше по скобам">▲</button><button class="btn" id="inDn" aria-label="Ниже по скобам">▼</button></div></div>
+    <div class="menu" id="mView" role="menu" aria-label="Вид" hidden>
+      <button class="mi" id="bCut" aria-pressed="false">Разрез</button>
+      <button class="mi" id="bExp" aria-pressed="false">Разобрать</button>
+      <button class="mi" id="bIn" aria-pressed="false">Изнутри</button>
+      <button class="mi" id="bLay" aria-pressed="false" hidden>Раскладка</button>
+    </div>
+    <div class="menu" id="mShow" role="menu" aria-label="Показать" hidden>
+      <button class="mi" id="bCoat" aria-pressed="false">Гидроизоляция</button>
+      <button class="mi" id="bSurf" aria-pressed="false">Покрытие</button>
+      <button class="mi mq" id="bQ" title="Уровень графики: авто (по мощности телефона), высокое, среднее, низкое">Графика: авто</button>
+    </div>
     <div class="tools">
       <button class="btn main" id="bPlay">▶ Сборка</button>
-      <button class="btn" id="bSteps" aria-pressed="false">Как собрать</button>
-      <button class="btn" id="bCut" aria-pressed="false">Разрез</button>
-      <button class="btn" id="bExp" aria-pressed="false">Разобрать</button>
-      <button class="btn" id="bLay" aria-pressed="false" hidden>Раскладка</button>
-      <button class="btn" id="bCoat" aria-pressed="false">Гидроизоляция</button>
-      <button class="btn" id="bSurf" aria-pressed="false">Покрытие</button>
-      <button class="btn" id="bIn" aria-pressed="false">Изнутри</button>
-      <button class="btn" id="bLbl" aria-pressed="true">Подписи</button>
-      <button class="btn" id="bReset">Вид</button>
+      <button class="btn" id="bSteps" aria-pressed="false" hidden>Как собрать</button>
+      <button class="btn dd" id="bView" aria-haspopup="menu" aria-expanded="false" aria-pressed="false">Вид</button>
+      <button class="btn dd" id="bShow" aria-haspopup="menu" aria-expanded="false" aria-pressed="false">Показать</button>
       <button class="btn sheetbtn" id="bInfo">Данные</button>
       <button class="btn main an" id="aPlay" aria-label="Пауза">❚❚</button>
       <button class="btn an" id="aPrev" aria-label="Шаг назад">⏮</button>
@@ -183,7 +202,7 @@ async function start(payload) {
 /* ---------- 0.17: зернистость бетона — тонкий шум на бетоне и растворе (кольца, плиты, стены, днище, лоток, балки).
    Рисунок — в координатах самого элемента (при подъёме краном не «плывёт»): мелкое зерно (песок, поры) + лёгкие пятна.
    Следы стяжек на стенах остаются. Только на сайте — паспорт печатается гладким. В адресе ?grain=0 — без зерна (сравнить). ---------- */
-const GRAIN_ON = !/[?&]grain=0\b/.test(location.search), GRAINED = new WeakSet(), GU = {a: {value: .06}, b: {value: .035}, a0: .06, b0: .035};
+const GRAIN_ON = !/[?&]grain=0\b/.test(location.search), GRAINED = new WeakSet(), GU = {a: {value: .085}, b: {value: .05}, g: {value: 1}, q: {value: 2}, a0: .085, b0: .05};   // g — поры и рельеф (0 — в «Раскладке»); q — уровень графики (2 высокий, 1 средний, 0 низкий)
 let grainTex = null;
 function grainTexture() {
   if (grainTex) return grainTex;
@@ -199,43 +218,65 @@ function grainTexture() {
   const G = 16, cell = N / G, cr = Array.from({length: G * G}, rnd), sm = t => t * t * (3 - 2 * t), v = (i, j) => cr[((j + G) % G) * G + ((i + G) % G)], c0 = new Float32Array(n);
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const gx = x / cell, gy = y / cell, x0 = Math.floor(gx), y0 = Math.floor(gy), fx = sm(gx - x0), fy = sm(gy - y0);
     c0[y * N + x] = (v(x0, y0) * (1 - fx) + v(x0 + 1, y0) * fx) * (1 - fy) + (v(x0, y0 + 1) * (1 - fx) + v(x0 + 1, y0 + 1) * fx) * fy; }
+  // 0.17: поры (B) — воздушные поры и редкие раковины, в той же плитке, что мелкое зерно (R): ~110 на плитку 0,91 м (масштаб 1,1,
+  //       пиксель 3,6 мм), Ø ≈ 7–16 мм, раковины до 28 мм — один отсчёт текстуры на зерно и поры
+  const pores = new Float32Array(n);
+  for (let k = 0; k < 110; k++) { const px = rnd() * N, py = rnd() * N, big = rnd() < .1, r = big ? 2.4 + rnd() * 1.6 : 1.0 + rnd() * 1.2, R = Math.ceil(r + 1), ix = Math.floor(px), iy = Math.floor(py);
+    for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) { const d = Math.hypot(ix + dx + .5 - px, iy + dy + .5 - py) / r; if (d >= 1) continue;
+      const j = (((iy + dy) % N + N) % N) * N + (((ix + dx) % N + N) % N), v = d < .55 ? 1 : (1 - d) / .45; if (v > pores[j]) pores[j] = v; } }   // плоское дно, крутой край — «кратер»
   const F = norm(fine), Cc = norm(blur(c0, 4)), data = new Uint8Array(n * 4);
-  for (let i = 0; i < n; i++) { data[4 * i] = Math.round(F[i] * 255); data[4 * i + 1] = Math.round(Cc[i] * 255); data[4 * i + 2] = 128; data[4 * i + 3] = 255; }
+  for (let i = 0; i < n; i++) { data[4 * i] = Math.round(F[i] * 255); data[4 * i + 1] = Math.round(Cc[i] * 255); data[4 * i + 2] = Math.round(pores[i] * 255); data[4 * i + 3] = 255; }
   const tx = new THREE.DataTexture(data, N, N, THREE.RGBAFormat);
   tx.wrapS = tx.wrapT = THREE.RepeatWrapping; tx.magFilter = THREE.LinearFilter; tx.minFilter = THREE.LinearMipmapLinearFilter; tx.generateMipmaps = true; tx.needsUpdate = true;
   return (grainTex = tx);
 }
-// три проекции по нормали (без развёртки): мелкое зерно — плитка 0,45 м, пятна — 2,7 м
-const GRAIN_GLSL = `varying vec3 vGPos; varying vec3 vGNrm; uniform sampler2D grainMap; uniform float grainA; uniform float grainB;
+// три проекции по нормали (без развёртки): мелкое зерно и поры — плитка 0,91 м, пятна — 2,7 м (6 отсчётов текстуры — как у зерна до пор).
+// 0.17: поры темнее и «вдавлены», микрорельеф (шероховатость) — нормаль по наклону зерна и пор: играет на свету, вблизи видно лучше.
+// grainP / grainK — у материала: сборный бетон глаже (меньше пор, рельеф слабее), монолит грубее; grainG — общий (в «Раскладке» 0)
+const GRAIN_GLSL = `varying vec3 vGPos; varying vec3 vGNrm; uniform sampler2D grainMap; uniform float grainA; uniform float grainB; uniform float grainG; uniform float grainP; uniform float grainK; uniform float grainQ;
+float gF = .5, gC = .5, gP = 0.0;
+vec4 grainT(vec3 w, float s, vec2 o) { return texture2D(grainMap, vGPos.yz * s + o) * w.x + texture2D(grainMap, vGPos.xz * s + o.yx) * w.y + texture2D(grainMap, vGPos.xy * s + o * 1.7) * w.z; }
 float grainF() {
+  if (grainQ < .5) return 1.0;   // низкий уровень графики — без текстуры (бетон гладкий)
   vec3 w = abs(normalize(vGNrm)); w = w * w * w * w; w /= (w.x + w.y + w.z + 1e-5);
-  float f = texture2D(grainMap, vGPos.yz * 2.2).r * w.x + texture2D(grainMap, vGPos.xz * 2.2).r * w.y + texture2D(grainMap, vGPos.xy * 2.2).r * w.z;
-  float c = texture2D(grainMap, vGPos.yz * .37 + .31).g * w.x + texture2D(grainMap, vGPos.xz * .37 + .17).g * w.y + texture2D(grainMap, vGPos.xy * .37 + .53).g * w.z;
-  return 1.0 + grainA * (f - .5) * 2.0 + grainB * (c - .5) * 2.0;
+  vec4 m = grainT(w, 1.1, vec2(0.0)); gF = m.r; gP = m.b; gC = grainT(w, .37, vec2(.31, .17)).g;
+  return (1.0 + grainA * (gF - .5) * 2.0 + grainB * (gC - .5) * 2.0) * (1.0 - grainG * grainP * gP);
+}
+vec3 grainBump(vec3 n) {
+  if (grainQ < 1.5) return n;   // рельеф — только на высоком
+  float h = grainG * grainK * ((gF - .5) * .7 - gP);
+  vec3 dpx = dFdx(-vViewPosition), dpy = dFdy(-vViewPosition); float dhx = dFdx(h), dhy = dFdy(h);
+  vec3 r1 = cross(dpy, n), r2 = cross(n, dpx); float det = dot(dpx, r1);
+  if (abs(det) < 1e-12) return n;
+  return normalize(abs(det) * n - sign(det) * (dhx * r1 + dhy * r2));
 }`;
-function grainPatch(mt) {
+const GRAIN_KIND = {pre: {p: .28, k: .001}, mono: {p: .42, k: .002}};   // сборный (заводской) и монолит: доля темноты поры, глубина рельефа, м
+function grainPatch(mt, kind) {
   if (!GRAIN_ON || !mt || GRAINED.has(mt)) return; GRAINED.add(mt);
+  const q = GRAIN_KIND[kind] || GRAIN_KIND[mt.userData.grain] || GRAIN_KIND.pre; mt.userData.grain = kind || mt.userData.grain || 'pre';
   mt.onBeforeCompile = sh => {
-    sh.uniforms.grainMap = {value: grainTexture()}; sh.uniforms.grainA = GU.a; sh.uniforms.grainB = GU.b;
+    sh.uniforms.grainMap = {value: grainTexture()}; sh.uniforms.grainA = GU.a; sh.uniforms.grainB = GU.b; sh.uniforms.grainG = GU.g; sh.uniforms.grainQ = GU.q;
+    sh.uniforms.grainP = {value: q.p}; sh.uniforms.grainK = {value: q.k};
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vGPos; varying vec3 vGNrm;')
       .replace('#include <project_vertex>', '#include <project_vertex>\n\tvGPos = transformed; vGNrm = objectNormal;');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\n' + GRAIN_GLSL)
-      .replace('#include <map_fragment>', '#include <map_fragment>\n\tdiffuseColor.rgb *= grainF();');
+      .replace('#include <map_fragment>', '#include <map_fragment>\n\tdiffuseColor.rgb *= grainF();')
+      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n\tnormal = grainBump(normal);');
   };
-  mt.customProgramCacheKey = () => 'kolsb-grain';
+  mt.customProgramCacheKey = () => 'kolsb-grain2';
   mt.needsUpdate = true;
 }
-const matClone = src => { const c = src.clone(); if (GRAINED.has(src)) grainPatch(c); return c; };   // копии (подсветка, анимация) — тоже с зерном
+const matClone = src => { const c = src.clone(); if (GRAINED.has(src)) grainPatch(c, src.userData.grain); return c; };   // копии (подсветка, анимация) — тоже с зерном
 function grainApply() {
   if (!GRAIN_ON) return;
-  const C = KC.COL, conc = new Set([C.ring, C.ring2, C.plate, C.gorl, C.ko, C.lot, C.lean, C.mortar, C.fresh, C.nab, C.beam, C.mono]);
+  const C = KC.COL, pre = new Set([C.ring, C.ring2, C.plate, C.gorl, C.ko, C.beam]), mono = new Set([C.lot, C.lean, C.mortar, C.fresh, C.nab, C.mono]);   // сборное — глаже, монолит — грубее
   for (const m of SC.meshes) { const ud = m.userData; if (!m.isMesh || ud.cap || ud.line) continue;
-    const mt = ud.base || m.material; if (!mt || !mt.color) continue;
-    if (conc.has(mt.color.getHex()) || (ud.key === 'wall' && mt.map)) grainPatch(mt); }
+    const mt = ud.base || m.material; if (!mt || !mt.color) continue; const hx = mt.color.getHex();
+    if (ud.key === 'wall' && mt.map) grainPatch(mt, 'mono'); else if (mono.has(hx)) grainPatch(mt, 'mono'); else if (pre.has(hx)) grainPatch(mt, 'pre'); }
 }
 function initGL() {
   const el = $('#view');
-  renderer = new THREE.WebGLRenderer({antialias: true}); renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2)); renderer.localClippingEnabled = true;
+  renderer = new THREE.WebGLRenderer({antialias: true}); renderer.localClippingEnabled = true; qInit();   // 0.17: чёткость — по уровню графики
   el.appendChild(renderer.domElement); setBg();
   if (isVV()) { SC = VV.buildScene(M, THREE); const c = VV.cut3d(M); SC.caps = VV.addCaps(SC, c.phi, c.ox, c.oy, c.side); SC.plane = SC.planeSk = VV.clipPlane(M, THREE, c.phi, c.ox, c.oy, c.side); }
   else {
@@ -306,13 +347,43 @@ function applyState() {
     m.visible = !!v;
     if (m.isMesh && !ud.line) m.material = (st && !st.nohi && !/^ms\d/.test(k) && (cur.has(k) || (k === 'coat' && ud.of && cur.has(ud.of)))) ? SC.hiMat : ud.base;   // МС — своим цветом, иначе сливаются с выделенным кольцом
   }
-  $('#bCut').setAttribute('aria-pressed', cut); $('#bExp').setAttribute('aria-pressed', expTarget > 0); $('#bLbl').setAttribute('aria-pressed', showLbl); $('#bSteps').setAttribute('aria-pressed', stepIdx >= 0); $('#bCoat').setAttribute('aria-pressed', showCoat); $('#bSurf').setAttribute('aria-pressed', showSurf); $('#bLay').setAttribute('aria-pressed', !!lay); $('#bIn').setAttribute('aria-pressed', !!inside); $('#inui').hidden = !inside; if (inside) $('#inHint').textContent = inHint();
+  $('#bCut').setAttribute('aria-pressed', cut); $('#bExp').setAttribute('aria-pressed', expTarget > 0); $('#bLbl').setAttribute('aria-pressed', showLbl); $('#bSteps').setAttribute('aria-pressed', stepIdx >= 0); $('#bCoat').setAttribute('aria-pressed', showCoat); $('#bSurf').setAttribute('aria-pressed', showSurf); $('#bLay').setAttribute('aria-pressed', !!lay); $('#bIn').setAttribute('aria-pressed', !!inside);
+  $('#bView').setAttribute('aria-pressed', !!(cut && stepIdx < 0 && !anim) || expTarget > 0 || !!inside || !!lay); $('#bShow').setAttribute('aria-pressed', showCoat || showSurf);   // 0.17: включено что-то из меню
+  $('#inui').hidden = !inside; if (inside) $('#inHint').textContent = inHint();
   const card = $('#card'); card.hidden = !st;
   if (st) { $('#cn').textContent = stepIdx + 1; $('#ct').textContent = st.t; $('#cf').textContent = `${st.fc ? st.fc + ' · ' : ''}шаг ${stepIdx + 1} из ${steps.length}`;
     $('#cu').innerHTML = st.todo.map(t => `<li>${esc(t)}</li>`).join(''); $('#cc').textContent = st.chk ? '✓ ' + st.chk : ''; }
   applySel();
   needs = true;
 }
+/* ---------- 0.17: уровень графики — как в играх. При заходе 1,5 с рисуем подряд и меряем интервал кадров (медиана): тормозит —
+   уровень ниже (и замер ещё раз); потом, пока крутят модель или идёт сборка, — то же по 60 кадрам, вверх сам не поднимается.
+   Высокий: чёткость до 2×, бетон с зерном, порами и рельефом; средний: 1,5×, зерно и поры без рельефа; низкий: 1×, бетон гладкий.
+   Вручную — «Показать ▾» → «Графика» (авто → высокое → среднее → низкое), запоминается. В адресе ?q=hi|mid|lo — для проверок ---------- */
+const QL = [{n: 'низкое', dpr: 1, q: 0}, {n: 'среднее', dpr: 1.5, q: 1}, {n: 'высокое', dpr: 2, q: 2}];
+const QP = (() => { const m = /[?&]q=(hi|mid|lo)\b/.exec(location.search); return m ? {hi: 2, mid: 1, lo: 0}[m[1]] : null; })();
+let qMode = 'auto', qLvl = 2;
+const qPerf = {s: [], last: 0, until: 0, skip: 0, t0: 0};
+function qInit() {
+  if (QP !== null) qMode = QP; else try { const v = localStorage.getItem('kolsb-q'); if (v === '0' || v === '1' || v === '2') qMode = +v; } catch (e) {}
+  qSet(qMode === 'auto' ? 2 : qMode); if (qMode === 'auto') qProbe(1500);
+}
+function qSet(l) { qLvl = l; GU.q.value = QL[l].q; renderer.setPixelRatio(Math.min(devicePixelRatio || 1, QL[l].dpr)); needs = true; qUi(); }
+function qProbe(ms) { const t = performance.now(); qPerf.s = []; qPerf.last = 0; qPerf.skip = 2; qPerf.t0 = t; qPerf.until = t + ms; }
+function qUi() { const b = $('#bQ'); if (b) b.textContent = 'Графика: ' + (qMode === 'auto' ? 'авто · ' : '') + QL[qLvl].n; }
+function qTick(now) {   // нарисован кадр: интервал до прошлого (только подряд; пауза больше 5 с — не в счёт)
+  if (qPerf.last && now - qPerf.last < 5000) { if (qPerf.skip > 0) qPerf.skip--; else qPerf.s.push(now - qPerf.last); }
+  qPerf.last = now;
+  if (qMode !== 'auto' || qLvl === 0) { qPerf.until = 0; return; }
+  const s = qPerf.s, probing = qPerf.until > 0;
+  if (probing && now > qPerf.t0 + 9000 && s.length < 3) { qPerf.until = 0; qPerf.s = []; return; }   // так и не набрали — без решения
+  if (probing ? !(s.length >= 30 || (now >= qPerf.until && s.length >= 3)) : s.length < 60) return;
+  const m = s.slice().sort((a, b) => a - b)[s.length >> 1];   // медиана, мс на кадр
+  qPerf.s = []; qPerf.until = 0;
+  const to = probing ? (m > 70 ? 0 : m > 40 ? qLvl - 1 : qLvl) : (m > 45 ? qLvl - 1 : qLvl);
+  if (to < qLvl) { qSet(Math.max(0, to)); if (qLvl > 0) qProbe(1000); }
+}
+addEventListener('visibilitychange', () => { qPerf.last = 0; });
 function loop(now) {
   requestAnimationFrame(loop);
   if (anim) animTick(now);
@@ -320,9 +391,10 @@ function loop(now) {
   if (controls.update()) needs = true;
   const el = $('#view'), W = el.clientWidth, H = el.clientHeight;
   if (renderer.domElement.width !== Math.round(W * renderer.getPixelRatio()) || renderer.domElement.height !== Math.round(H * renderer.getPixelRatio())) { renderer.setSize(W, H, false); renderer.domElement.style.width = W + 'px'; renderer.domElement.style.height = H + 'px'; camera.aspect = W / H; camera.updateProjectionMatrix(); needs = true; }
-  if (!needs) return; needs = false;
+  if (qPerf.until && now < qPerf.t0 + 9000) needs = true;   // 0.17: замер плавности — рисуем подряд, пока не решим (не дольше 9 с)
+  if (!needs) { qPerf.last = 0; return; } needs = false;
   if (sel) glowTick(now);
-  renderer.render(SC.scene, camera);
+  renderer.render(SC.scene, camera); qTick(now);
   layoutLabels(W, H);
   const card = $('#card'); if (!card.hidden) card.style.bottom = ($('.tools').offsetHeight + 16) + 'px';
   if (anim) $('#progi').style.width = (100 * Math.min(1, (anim.i + Math.min(1, anim.t / anim.dur)) / steps.length)).toFixed(1) + '%';
@@ -425,7 +497,18 @@ function initPick() {
     if (sel) selectLbl(null);
   });
 }
+let nabTagEl = null;
+function nabTagPlace(W, H) {   // 0.17: подпись размера набетонки — рядом с размерной линией, справа
+  const t = anim && anim.nabTag;
+  if (!t) { if (nabTagEl) nabTagEl.style.display = 'none'; return; }
+  if (!nabTagEl || !nabTagEl.isConnected) { nabTagEl = document.createElement('div'); nabTagEl.className = 'lbl ld nb'; $('#labels').appendChild(nabTagEl); }   // подписи пересобирают #labels
+  if (nabTagEl.dataset.h !== String(t.h)) { nabTagEl.dataset.h = String(t.h); nabTagEl.innerHTML = `<b>добор ${Math.round(t.h * 1000)} мм</b><small>до отметки люка</small>`; }
+  _lv.copy(t.P).project(camera); const x = (_lv.x + 1) / 2 * W, y = (1 - _lv.y) / 2 * H;
+  nabTagEl.style.display = _lv.z > 1 || x < 0 || x > W || y < 0 || y > H ? 'none' : '';
+  nabTagEl.style.transform = `translate(${Math.round(Math.min(W - nabTagEl.offsetWidth - 4, x + 8))}px,${Math.round(y - nabTagEl.offsetHeight / 2)}px)`;
+}
 function layoutLabels(W, H) {
+  nabTagPlace(W, H);
   const svg = $('#leaders'), st = stepIdx >= 0 ? steps[stepIdx] : null, done = st ? new Set(steps.slice(0, stepIdx + 1).flatMap(x => x.els)) : null;
   if (lay) { layLabels(W, H); svg.innerHTML = ''; return; }
   const coatOn = showLbl && !inside && !cut && expT < .02 && ((showCoat && !done) || (done && done.has('coatfin')));
@@ -514,13 +597,13 @@ function layView() {   // строго сверху: длина колодца �
 function layOn() {
   if (anim) animStop(); if (inside) setInside(false); if (sel) selectLbl(null);
   stepIdx = -1; cut = false; cutSk = false; expT = expTarget = 0; stepExp = false; KC.explode(SC, 0);
-  layGeo().visible = true; lay = {fov: camera.fov}; GU.a.value = GU.b.value = 0;   // раскладка — чертёж: бетон без зерна
+  layGeo().visible = true; lay = {fov: camera.fov}; GU.a.value = GU.b.value = GU.g.value = 0;   // раскладка — чертёж: бетон без зерна и пор
   controls.enableRotate = false; camera.fov = 14; camera.updateProjectionMatrix();
   applyState(); layView();
 }
 function layOff(keepView) {
   if (!lay) return;
-  SC.layG.visible = false; camera.fov = lay.fov; camera.updateProjectionMatrix(); lay = null; controls.enableRotate = true; GU.a.value = GU.a0; GU.b.value = GU.b0;
+  SC.layG.visible = false; camera.fov = lay.fov; camera.updateProjectionMatrix(); lay = null; controls.enableRotate = true; GU.a.value = GU.a0; GU.b.value = GU.b0; GU.g.value = 1;
   if (sel) selectLbl(null); else applyState();
   if (!keepView) resetView();
 }
@@ -646,7 +729,18 @@ function frame() {
   $('#bSteps').onclick = () => { out(); if (stepIdx >= 0) { stepIdx = -1; cut = false; applyState(); resetView(); } else { stepIdx = 0; stepCut(); expTarget = 0; applyState(); resetView(true); } };
   $('#next').onclick = () => { stepIdx = Math.min(steps.length - 1, stepIdx + 1); stepCut(); applyState(); resetView(true); };
   $('#prev').onclick = () => { stepIdx = Math.max(0, stepIdx - 1); stepCut(); applyState(); resetView(true); };
-  $('#bInfo').onclick = () => sheet(!$('#panel').classList.contains('open'));
+  // 0.17: кнопки по категориям — «Вид ▾» (Разрез, Разобрать, Изнутри, Раскладка) и «Показать ▾» (Гидроизоляция, покрытие)
+  for (const [b, m] of [['#bView', '#mView'], ['#bShow', '#mShow']]) {
+    $(b).onclick = ev => { ev.stopPropagation(); const open = $(m).hidden; menusClose(); if (open) menuOpen($(b), $(m)); };
+    $(m).addEventListener('click', ev => { const it = ev.target.closest('.mi'); if (it && it.id !== 'bQ') menusClose(); }); }
+  $('#bQ').onclick = () => {   // 0.17: авто → высокое → среднее → низкое → авто; запоминается
+    qMode = qMode === 'auto' ? 2 : qMode === 0 ? 'auto' : qMode - 1;
+    try { localStorage.setItem('kolsb-q', String(qMode)); } catch (e) {}
+    qSet(qMode === 'auto' ? 2 : qMode); if (qMode === 'auto') qProbe(1500); };
+  addEventListener('pointerdown', ev => { if (!ev.target.closest('.menu') && !ev.target.closest('.btn.dd')) menusClose(); }, true);
+  addEventListener('keydown', ev => { if (ev.key === 'Escape') menusClose(); });
+  addEventListener('resize', menusClose);
+  $('#bInfo').onclick = () => { menusClose(); sheet(!$('#panel').classList.contains('open')); };
   $('#bClose').onclick = () => sheet(false);
   $('.stage').addEventListener('pointerdown', ev => { if ($('#panel').classList.contains('open') && !ev.target.closest('.tools')) sheet(false); });
   addEventListener('keydown', ev => { if (ev.key === 'Escape' && $('#panel').classList.contains('open')) { ev.stopImmediatePropagation(); sheet(false); } else if (ev.key === 'Escape' && sel && !anim) selectLbl(null); });
@@ -657,14 +751,24 @@ function frame() {
     hd.addEventListener('pointerup', () => { y0 = null; }); hd.addEventListener('pointercancel', () => { y0 = null; }); }
   $('#bPlay').onclick = () => { out(); animStart(); };
   $('#aPlay').onclick = () => { if (!anim) return; if (anim.done) { animGo(0); anim.paused = false; } else anim.paused = !anim.paused; animUi(); };
-  $('#aNext').onclick = () => { if (anim && anim.i < steps.length - 1) { animGo(anim.i + 1); animUi(); } };
-  $('#aPrev').onclick = () => { if (anim) { animGo(anim.t > 1.2 || anim.i === 0 ? anim.i : anim.i - 1); animUi(); } };
+  // 0.17: «Как собрать» — внутри «Сборки»: на паузе ⏮ ⏭ показывают шаг уже сделанным (как прежний режим «по шагам»)
+  const animEnd = () => { if (anim && anim.paused) { anim.t = Math.max(0, anim.dur - 1e-3); animApply(anim.t); needs = true; } };
+  $('#aNext').onclick = () => { if (anim && anim.i < steps.length - 1) { animGo(anim.i + 1); animEnd(); animUi(); } };
+  $('#aPrev').onclick = () => { if (anim) { animGo(!anim.paused && anim.t > 1.2 || anim.i === 0 ? anim.i : anim.i - 1); animEnd(); animUi(); } };
   $('#aSpd').onclick = () => { if (anim) { anim.spd = anim.spd === 1 ? 2 : anim.spd === 2 ? .5 : 1; animUi(); } };
   $('#aStop').onclick = () => animStop();
   controls.addEventListener('start', () => { if (anim) anim.user = 1e15; });
   controls.addEventListener('end', () => { if (anim) { anim.user = performance.now() + 2500; anim.resync = true; } });
   addEventListener('keydown', ev => { if (!anim) return; if (ev.key === ' ') { ev.preventDefault(); $('#aPlay').click(); } else if (ev.key === 'ArrowRight') $('#aNext').click(); else if (ev.key === 'ArrowLeft') $('#aPrev').click(); else if (ev.key === 'Escape') animStop(); });
 }
+// 0.17: меню над кнопкой (не выходит за края сцены); закрывается по выбору, по нажатию мимо, Esc, при «Сборке»
+function menuOpen(btn, m) {
+  m.hidden = false; btn.setAttribute('aria-expanded', 'true');
+  const sr = $('.stage').getBoundingClientRect(), r = btn.getBoundingClientRect();
+  m.style.left = Math.round(Math.max(8, Math.min(sr.width - m.offsetWidth - 8, r.left - sr.left))) + 'px';
+  m.style.bottom = Math.round(sr.bottom - r.top + 6) + 'px';
+}
+function menusClose() { for (const id of ['#mView', '#mShow']) $(id).hidden = true; for (const id of ['#bView', '#bShow']) $(id).setAttribute('aria-expanded', 'false'); }
 // лист «Данные» на телефоне: открыт — запись в истории, чтобы «назад» закрывал лист, а не уходил со страницы
 function sheet(on, fromPop) {
   const p = $('#panel'), was = p.classList.contains('open');
@@ -777,7 +881,16 @@ function nabObj(i, rin, rout) {
     b.position.set((rout + .05) * Math.cos(a), (rout + .05) * Math.sin(a), 0); b.rotation.z = a; fs.add(b); }
   form.add(fs);
   const bands = [0, 1].map(() => { const m = new T3.Mesh(new T3.TorusGeometry(rout + .074, .006, 6, 56), band); form.add(m); return m; });   // стяжные ленты по рейкам
+  // 0.17: малая высота (до 100 мм) — лёгкая обечайка: полосы жести снаружи и изнутри, снаружи — проволока (щиты с рейками — перебор)
+  const tin = M2(0x9ba4ac, {metalness: .55, roughness: .35, side: T3.DoubleSide, transparent: true}), sheet = new T3.Group(), ss = new T3.Group();
+  ss.add(new T3.Mesh(ann(rout + .004, rout + .0055), tin), new T3.Mesh(ann(rin - .0055, rin - .004), tin)); sheet.add(ss);
+  const wire = new T3.Mesh(new T3.TorusGeometry(rout + .007, .0022, 5, 56), M2(0x3a3f44, {metalness: .5, roughness: .5, transparent: true})); sheet.add(wire);
+  form.add(sheet);
   g.add(form);
+  // размерная линия высоты набетонки (вертикаль, засечки, выносные к кольцу) — сбоку, с правой от камеры стороны
+  const dg = new T3.BufferGeometry(), dv = [0, 0, 0, 0, 0, 1, -.035, 0, 0, .035, 0, 0, -.035, 0, 1, .035, 0, 1, -.17, 0, 0, .02, 0, 0, -.17, 0, 1, .02, 0, 1];
+  dg.setAttribute('position', new T3.Float32BufferAttribute(dv, 3));
+  const dim = new T3.LineSegments(dg, new T3.LineBasicMaterial({color: 0x23272b})); g.add(dim);
   const bucket = new T3.Group(), bm = M2(0x2e6aa8, {roughness: .55, side: T3.DoubleSide}), conc = M2(C.fresh, {roughness: .95});   // ведро: дно — в начале координат, открыто к +z
   bucket.add(new T3.Mesh(new T3.CylinderGeometry(.15, .12, .29, 28, 1, true).rotateX(Math.PI / 2).translate(0, 0, .145), bm));
   bucket.add(new T3.Mesh(new T3.CircleGeometry(.12, 28).translate(0, 0, .002), bm));
@@ -793,7 +906,7 @@ function nabObj(i, rin, rout) {
   const capMat = M2(C.fresh, {roughness: 1, flatShading: true, side: T3.DoubleSide}), cap = new T3.Mesh(cg, capMat); g.add(cap);
   const tw = trowelMake(); tw.scale.setScalar(1.35); g.add(tw);   // крупнее натуры — видно на телефоне
   g.visible = false; SC.scene.add(g);
-  return (nabPool[i] = {g, form, fs, bands, bucket, stream, cap, capMat, tw, mats: [wood, band]});
+  return (nabPool[i] = {g, form, fs, bands, sheet, ss, wire, dim, bucket, stream, cap, capMat, tw, mats: [wood, band, tin, wire.material]});
 }
 // дорожка «набетонка»: опалубка 0–0,7 с, бетон из ведра 0,8–3,0, кельма 3,15–4,65, распалубка 4,8–5,6; кадр — у этой горловины
 function nabTrack(e, body, t0, i) {
@@ -813,9 +926,15 @@ function nabApply(tr, t) {
   const o = nabObj(tr.i, tr.rin, tr.rout); o.g.visible = true;
   // опалубка: опускается на место, видна; распалубка — вверх и тает
   const zf = tr.z0 + .35 * (1 - easeOut(fIn)) + .5 * easeIO(up), op = up > 0 ? 1 - up : fIn;
-  o.form.position.set(cx, cy, zf); o.fs.scale.z = h + .015;
-  o.bands[0].position.z = (h + .015) * (h > .12 ? .28 : .5); o.bands[1].position.z = (h + .015) * .78; o.bands[1].visible = h > .12;
+  const light = h <= .1;   // до 100 мм — обечайка из жести, выше — щиты с рейками
+  o.form.position.set(cx, cy, zf); o.fs.scale.z = o.ss.scale.z = h + .015; o.fs.visible = !light; o.sheet.visible = light; o.wire.position.z = (h + .015) * .5;
+  o.bands[0].visible = !light; o.bands[0].position.z = (h + .015) * (h > .12 ? .28 : .5); o.bands[1].position.z = (h + .015) * .78; o.bands[1].visible = !light && h > .12;
   for (const mt of o.mats) { mt.opacity = op; mt.depthWrite = op > .99; }
+  // размер «добор h мм до отметки люка»: опалубка встала — и до распалубки
+  const tagOn = lt >= P.form[1] && up < 1; o.dim.visible = tagOn;
+  if (tagOn) { _nt.setFromMatrixColumn(camera.matrixWorld, 0); _nt.z = 0; if (_nt.lengthSq() < 1e-6) _nt.set(1, 0, 0); _nt.normalize();
+    const R = tr.rout + .2; o.dim.position.set(cx + R * _nt.x, cy + R * _nt.y, tr.z0); o.dim.rotation.set(0, 0, Math.atan2(_nt.y, _nt.x)); o.dim.scale.set(1, 1, h);
+    if (!anim.nabTag) anim.nabTag = {P: new THREE.Vector3(cx + R * _nt.x, cy + R * _nt.y, tr.z0 + h / 2), h}; }
   // ведро: подносят и наклоняют, льют по кругу, выпрямляют и уносят
   const bOn = lt >= P.pour[0] - .35 && lt < P.pour[0] + P.pour[1] + .35; o.bucket.visible = bOn; o.stream.visible = false;
   if (bOn) {
@@ -1155,7 +1274,7 @@ function animStart() {
   for (const m of SC.meshes) { m.userData.ax = m.position.x; m.userData.ay = m.position.y; }
   if (!rig) rig = rigMake();
   anim = {i: 0, t: 0, dur: 1, T: [], spd: 1, paused: false, last: 0, lbl: new Set(), user: 0, resync: true, az: Math.atan2(camera.position.y - controls.target.y, camera.position.x - controls.target.x), done: false};
-  $('.tools').classList.add('playing'); $('#card').classList.add('playing'); $('#prog').hidden = false;
+  $('.tools').classList.add('playing'); $('#card').classList.add('playing'); $('#prog').hidden = false; menusClose(); $('#bReset').hidden = true;
   animGo(0); animUi();
 }
 function animReset() {   // все дорожки — в конечное положение
@@ -1199,13 +1318,14 @@ function animUi() {
 }
 function animStop() {
   if (!anim) return; animReset(); anim = null;
-  $('.tools').classList.remove('playing'); $('#card').classList.remove('playing'); $('#prog').hidden = true;
+  $('.tools').classList.remove('playing'); $('#card').classList.remove('playing'); $('#prog').hidden = true; $('#bReset').hidden = false;
   stepIdx = -1; cut = false; cutSk = false; expT = expTarget = 0; KC.explode(SC, 0); applyState(); resetView();
 }
 function animApply(t) {
   if (trowel) { trowel.g.visible = false; trowel.bucket.visible = false; }   // 0.16: кельму и ведро показывает только идущая дорожка
   if (brush) { brush.g.visible = false; brush.bucket.visible = false; }
   for (const o of nabPool) o.g.visible = false;
+  anim.nabTag = null;
   for (const tr of anim.T) {
     const p = cl01((t - tr.t0) / tr.d), before = t < tr.t0;
     if (tr.type === 'drop') { const k = 1 - easeOut(p);
@@ -1339,8 +1459,9 @@ function buildPanelVV(w) {
     <div class="chips">${chips.join('')}</div>
     <dl class="facts"><dt>Глубина до низа трубы</dt><dd>${fmt(N(w, 'H'))} м</dd><dt>Рабочая часть</dt><dd>${fmt(M.V)} м${M.rect ? ` · стены ${mm(M.t)} мм` : ''}</dd><dt>Горловина с плитой</dt><dd>${fmt(g0.ztop - M.V)} м</dd>
       <dt>Верх люка</dt><dd>${sgn(g0.ztop - M.zg)} м от земли</dd><dt>Самый тяжёлый</dt><dd>${M.heavy ? esc(M.heavy.mark) + ' · ' + fmt(M.heavy.kg / 1000) + ' т' : '—'}</dd><dt>Масса сборных и люков</dt><dd>${fmt(M.total / 1000)} т</dd></dl>
-    <div><h2>Элементы</h2><table><thead><tr><th>Марка</th><th>Размеры, мм</th><th class="r">Шт.</th><th class="r">кг</th></tr></thead><tbody>
-      ${M.rows.map(r => `<tr><td>${esc(r.mark)}</td><td>${esc(dimsOf(r.mark))}</td><td class="r">${r.q}</td><td class="r">${Math.round(r.q * r.kg)}</td></tr>`).join('')}</tbody></table></div>
+    <div><h2>Элементы</h2><table><thead><tr><th>Поз.</th><th>Марка</th><th>Размеры, мм</th><th class="r">Шт.</th><th class="r">кг</th></tr></thead><tbody>
+      ${M.rows.map(r => `<tr><td>${r.pos}</td><td>${esc(r.mark)}</td><td>${esc(dimsOf(r.mark))}</td><td class="r">${r.q}</td><td class="r">${Math.round(r.q * r.kg)}</td></tr>`).join('')}</tbody></table>
+      <div class="note">Цифра перед маркой на подписях модели — позиция в этой таблице (как «Поз.» в паспорте).</div></div>
     ${M.seis ? `<div><h2>Сейсмика: МС</h2><table><tbody>${[['ring', 'Швы колец'], ['pp', 'Кольцо — плита'], ['p10', 'Плита — КС10'], ['g10', 'Швы КС10'], ['p10t', 'КС10 — ПП10'], ['ppg', 'Плита — горловина'], ['gorl', 'Швы горловины'], ['gko', 'КС7 — КО6']].map(([k, t]) => { const l = M.seams.filter(s => s.kind === k); return l.length ? `<tr><td>${t}</td><td class="r">${l[0].mark} × ${l[0].n}${l.length > 1 ? ` × ${l.length} шв.` : ''}</td></tr>` : ''; }).join('')}
       ${M.zamE ? `<tr><td>Стык с днищем</td><td class="r">без МС: замок из бетона В12,5 · галтель ${mm(M.zamE.z1 - M.zamE.z0)}×${mm(M.zamE.rout - M.zamE.rin)} · ${fmt(M.zamE.vol, 3)} м³</td></tr>` : ''}${N(w, 'setR') ? `<tr><td>Сетка в стенах</td><td class="r">С3Вр1-150 · ${fmt(N(w, 'setR'))} кг</td></tr>` : ''}</tbody></table>
       <div class="note">ТПР 901-09-11.84, Альбом VI.88 (АС-3, АС-5): МС-1…4 — Н-образные, МС-5…8 — h-образные.</div></div>` : ''}
@@ -1378,8 +1499,9 @@ function buildPanel(w, obj) {
       ${M.nabE ? `<tr><td>в т.ч. набетонка М100</td><td class="r">${mm(M.nabE.z1 - M.nabE.z0)} мм · ${fmt(M.nabV, 3)} м³</td></tr>` : ''}${M.nabJ > .0005 ? `<tr><td>в т.ч. шов под КО6 (добор)</td><td class="r">10 + ${mm(M.nabJ)} мм</td></tr>` : ''}
       <tr class="sum"><td>Горловина с плитой и люком</td><td class="r ok">${mm(gW)} мм ✓</td></tr></tbody></table>
       <div class="note">Шов на растворе — 10 мм. Суммы совпадают с расчётом «Авто Колодцев».</div></div>
-    <div><h2>Элементы</h2><table><thead><tr><th>Марка</th><th>Размеры, мм</th><th class="r">Шт.</th><th class="r">кг</th></tr></thead><tbody>
-      ${M.rows.map(r => `<tr><td>${esc(r.mark)}</td><td>${esc(dimsOf(r.mark) || (/^Решётка/.test(r.mark) ? 'рамка 620×620' : ''))}</td><td class="r">${r.q}</td><td class="r">${Math.round(r.q * r.kg)}</td></tr>`).join('')}</tbody></table></div>
+    <div><h2>Элементы</h2><table><thead><tr><th>Поз.</th><th>Марка</th><th>Размеры, мм</th><th class="r">Шт.</th><th class="r">кг</th></tr></thead><tbody>
+      ${M.rows.map(r => `<tr><td>${r.pos}</td><td>${esc(r.mark)}</td><td>${esc(dimsOf(r.mark) || (/^Решётка/.test(r.mark) ? 'рамка 620×620' : ''))}</td><td class="r">${r.q}</td><td class="r">${Math.round(r.q * r.kg)}</td></tr>`).join('')}</tbody></table>
+      <div class="note">Цифра перед маркой на подписях модели — позиция в этой таблице (как «Поз.» в паспорте).</div></div>
     ${M.seis ? `<div><h2>Сейсмика: МС</h2><table><tbody>${[['ring', 'Швы колец'], ['pp', 'Под ПП'], ['ppg', 'ПП — горловина'], ['gorl', 'Швы горловины']].map(([k, t]) => { const l = M.seams.filter(s => s.kind === k); return l.length ? `<tr><td>${t}</td><td class="r">${l[0].mark} × ${l[0].n}${l.length > 1 ? ` × ${l.length} шв.` : ''}</td></tr>` : ''; }).join('')}
       <tr><td>Шов с плитой днища</td><td class="r">обойма — бетон лотка</td></tr></tbody></table></div>` : ''}
     <div><h2>Основание и гидроизоляция</h2><table><tbody>
